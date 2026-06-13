@@ -21,7 +21,7 @@ struct SettingsView: View {
                 .padding()
                 .tabItem { Label("Support", systemImage: "info.circle") }
         }
-        .frame(width: 680, height: 520)
+        .frame(width: 860, height: 560)
     }
 }
 
@@ -89,8 +89,10 @@ private struct DevicesTab: View {
 
             HStack(spacing: 18) {
                 PriorityPane(direction: .output, title: "Output")
+                    .frame(maxWidth: .infinity)
                 Divider()
                 PriorityPane(direction: .input, title: "Input")
+                    .frame(maxWidth: .infinity)
             }
         }
     }
@@ -149,7 +151,7 @@ private struct PriorityPane: View {
         let endpoint = appState.endpoints.first { $0.uid == device.uid && $0.direction == direction }
         let isDefault = device.uid == (direction == .input ? appState.defaultInputUID : appState.defaultOutputUID)
 
-        return HStack(spacing: 8) {
+        return HStack(alignment: .top, spacing: 8) {
             Text("\(position)")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
@@ -171,34 +173,42 @@ private struct PriorityPane: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(device.name)
-                        .lineLimit(1)
-                    if isDefault {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color.accentColor)
-                            .help("This is the current macOS default \(direction == .input ? "input" : "output").")
-                    }
-                    if endpoint == nil {
-                        Text("offline")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                Text(device.name)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(device.name)
+
+                if isDefault || endpoint == nil {
+                    HStack(spacing: 5) {
+                        if isDefault {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.accentColor)
+                                .help("This is the current macOS default \(direction == .input ? "input" : "output").")
+                        }
+                        if endpoint == nil {
+                            Text("offline")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+
                 Text("\(device.transport.rawValue) · \(device.uid.suffix(8))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
 
             Picker("Mode", selection: modeBinding(for: device)) {
                 Text("Auto").tag(DeviceMode.automatic)
                 Text("Never").tag(DeviceMode.never)
             }
             .labelsHidden()
-            .frame(width: 96)
+            .controlSize(.small)
+            .frame(width: 82)
             .help("Auto lets Audiyo select this device when it is the highest available priority. Never keeps the device remembered but blocks automatic selection.")
             .accessibilityLabel("Mode for \(device.name)")
         }

@@ -131,12 +131,14 @@ final class AppState {
     }
 
     func setMenuBarIconVisible(_ visible: Bool) {
+        guard config.menuBarIconVisible != visible else { return }
         config.setMenuBarIconVisible(visible)
         persistConfig()
         applyActivationPolicy()
     }
 
     func setDockIconVisible(_ visible: Bool) {
+        guard config.dockIconVisible != visible else { return }
         config.setDockIconVisible(visible)
         persistConfig()
         applyActivationPolicy()

@@ -52,11 +52,15 @@ struct MenuView: View {
                     appState.refresh()
                 }
                 Spacer()
-                Button("Settings...") {
+                Button {
                     NSApp.activate(ignoringOtherApps: true)
                     openSettings()
                     dismiss()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .accessibilityLabel("Settings")
                 }
+                .help("Open Settings")
                 Button("Quit") {
                     NSApp.terminate(nil)
                 }
