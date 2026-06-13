@@ -1,6 +1,17 @@
+# Generated project and local build products
 Audiyo.xcodeproj/
 .build/
 DerivedData/
-.DS_Store
+dist/
+*.app
+*.dSYM/
+*.xcresult/
+*.dmg
+*.pkg
+
+# Xcode user state
 *.xcuserstate
 xcuserdata/
+
+# macOS
+.DS_Store
