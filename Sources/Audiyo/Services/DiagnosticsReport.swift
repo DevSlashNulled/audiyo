@@ -24,6 +24,8 @@ struct DiagnosticsReport {
         lines.append("- Auto: \(config.masterAutoEnabled ? "enabled" : "disabled")")
         lines.append("- Notifications: \(config.notificationsEnabled ? "enabled" : "disabled")")
         lines.append("- Bluetooth inputs default to Never: \(config.newBluetoothInputsNever ? "yes" : "no")")
+        lines.append("- Menu bar icon: \(config.menuBarIconVisible ? "visible" : "hidden")")
+        lines.append("- Dock icon: \(config.dockIconVisible ? "visible" : "hidden")")
         lines.append("- Alert output UID: \(config.alertOutputUID ?? "follow output")")
         lines.append("- Last error: \(lastError ?? "none")")
         lines.append("")

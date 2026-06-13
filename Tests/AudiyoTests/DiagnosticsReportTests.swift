@@ -37,6 +37,8 @@ final class DiagnosticsReportTests: XCTestCase {
         XCTAssertTrue(report.contains("Bundle: /Applications/Audiyo.app"))
         XCTAssertTrue(report.contains("- Auto: disabled"))
         XCTAssertTrue(report.contains("- Notifications: enabled"))
+        XCTAssertTrue(report.contains("- Menu bar icon: visible"))
+        XCTAssertTrue(report.contains("- Dock icon: hidden"))
         XCTAssertTrue(report.contains("- Output: speaker-uid"))
         XCTAssertTrue(report.contains("Desk Speakers"))
     }

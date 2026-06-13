@@ -26,8 +26,9 @@ Applications symlink for drag install.
 
 ## Install and Run in the Background
 
-Audiyo is a background menu-bar utility. It does not show a Dock icon or main
-window; the menu-bar icon is the control surface.
+Audiyo defaults to a background menu-bar utility: no Dock icon and no main
+window. In Settings, you can hide the menu-bar icon or show a Dock/app-switcher
+icon; Audiyo keeps at least one control surface visible.
 
 ```sh
 make install
@@ -36,7 +37,7 @@ open /Applications/Audiyo.app
 
 Launch at Login is only available when Audiyo is running from
 `/Applications/Audiyo.app`. After installing and launching that copy, open
-Settings from the menu-bar icon and enable Launch at Login.
+Settings from the menu-bar icon or Dock/app menu and enable Launch at Login.
 
 For local development without installing:
 

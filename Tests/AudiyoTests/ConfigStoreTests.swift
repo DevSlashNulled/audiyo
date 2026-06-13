@@ -21,21 +21,26 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertEqual(try store.load(), config)
     }
 
-    func testSeedFlagsBluetoothInputsNever() {
-        let now = Date(timeIntervalSince1970: 20)
-        let endpoints = [
-            Endpoint(uid: "bt-mic", direction: .input, transport: .bluetooth, name: "Headset Mic", channels: 1, sampleRate: 16_000, deviceID: 1),
-            Endpoint(uid: "usb-mic", direction: .input, transport: .usb, name: "SoloCast", channels: 1, sampleRate: 48_000, deviceID: 2),
-            Endpoint(uid: "bt-out", direction: .output, transport: .bluetooth, name: "Headset", channels: 2, sampleRate: 44_100, deviceID: 3)
-        ]
+    func testDisplayFlagsDefaultToMenuBarUtilityMode() throws {
+        let data = Data(#"{"version":1,"input":[],"output":[]}"#.utf8)
+        let config = try JSONDecoder().decode(PriorityConfig.self, from: data)
 
-        let config = ConfigStore(url: temporaryURL()).seed(from: endpoints, now: now)
+        XCTAssertTrue(config.menuBarIconVisible)
+        XCTAssertFalse(config.dockIconVisible)
+    }
 
-        XCTAssertEqual(config.inputPriority, ["bt-mic", "usb-mic"])
-        XCTAssertEqual(config.outputPriority, ["bt-out"])
-        XCTAssertEqual(config.knownDevice(uid: "bt-mic", direction: .input)?.mode, .never)
-        XCTAssertEqual(config.knownDevice(uid: "bt-out", direction: .output)?.mode, .automatic)
-        XCTAssertEqual(config.knownDevice(uid: "bt-mic", direction: .input)?.lastSeen, now)
+    func testDisplayFlagsKeepAtLeastOneControlSurfaceVisible() {
+        var config = PriorityConfig()
+
+        config.setMenuBarIconVisible(false)
+
+        XCTAssertFalse(config.menuBarIconVisible)
+        XCTAssertTrue(config.dockIconVisible)
+
+        config.setDockIconVisible(false)
+
+        XCTAssertTrue(config.menuBarIconVisible)
+        XCTAssertFalse(config.dockIconVisible)
     }
 
     private func temporaryURL() -> URL {

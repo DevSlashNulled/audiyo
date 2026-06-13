@@ -5,7 +5,10 @@ struct AudiyoApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        MenuBarExtra {
+        MenuBarExtra(isInserted: Binding(
+            get: { appState.menuBarIconVisible },
+            set: { appState.setMenuBarIconVisible($0) }
+        )) {
             MenuView()
                 .environment(appState)
                 .frame(width: 340)

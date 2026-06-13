@@ -33,6 +33,8 @@ struct PriorityConfig: Codable, Equatable {
     var masterAutoEnabled: Bool = true
     var notificationsEnabled: Bool = false
     var newBluetoothInputsNever: Bool = true
+    var menuBarIconVisible: Bool = true
+    var dockIconVisible: Bool = false
 
     init(input: [PriorityDevice] = [], output: [PriorityDevice] = [], pinnedSystemOutputUID: String? = nil) {
         self.input = input
@@ -48,6 +50,8 @@ struct PriorityConfig: Codable, Equatable {
         case masterAutoEnabled
         case notificationsEnabled
         case newBluetoothInputsNever
+        case menuBarIconVisible
+        case dockIconVisible
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +63,9 @@ struct PriorityConfig: Codable, Equatable {
         masterAutoEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterAutoEnabled) ?? true
         notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? false
         newBluetoothInputsNever = try container.decodeIfPresent(Bool.self, forKey: .newBluetoothInputsNever) ?? true
+        menuBarIconVisible = try container.decodeIfPresent(Bool.self, forKey: .menuBarIconVisible) ?? true
+        dockIconVisible = try container.decodeIfPresent(Bool.self, forKey: .dockIconVisible) ?? false
+        ensureControlSurfaceVisible()
     }
 
     func devices(for direction: AudioDirection) -> [PriorityDevice] {
@@ -118,10 +125,33 @@ struct PriorityConfig: Codable, Equatable {
         }
     }
 
+    mutating func setMenuBarIconVisible(_ visible: Bool) {
+        if !visible && !dockIconVisible {
+            dockIconVisible = true
+        }
+        menuBarIconVisible = visible
+        ensureControlSurfaceVisible()
+    }
+
+    mutating func setDockIconVisible(_ visible: Bool) {
+        if !visible && !menuBarIconVisible {
+            menuBarIconVisible = true
+        }
+        dockIconVisible = visible
+        ensureControlSurfaceVisible()
+    }
+
+    mutating func ensureControlSurfaceVisible() {
+        if !menuBarIconVisible && !dockIconVisible {
+            menuBarIconVisible = true
+        }
+    }
+
     private func reordered(_ devices: [PriorityDevice], by priority: [String]) -> [PriorityDevice] {
         let knownByUID = Dictionary(uniqueKeysWithValues: devices.map { ($0.uid, $0) })
         let ordered = priority.compactMap { knownByUID[$0] }
-        let remaining = devices.filter { !priority.contains($0.uid) }
+        let orderedUIDs = Set(ordered.map(\.uid))
+        let remaining = devices.filter { !orderedUIDs.contains($0.uid) }
         return ordered + remaining
     }
 }
@@ -146,11 +176,6 @@ extension DefaultSelector {
             return "alerts"
         }
     }
-}
-
-struct EndpointOverride: Equatable {
-    let uid: String
-    let direction: AudioDirection
 }
 
 struct ActiveOverrides: Equatable {

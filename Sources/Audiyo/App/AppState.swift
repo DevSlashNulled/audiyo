@@ -40,6 +40,14 @@ final class AppState {
         config.masterAutoEnabled
     }
 
+    var menuBarIconVisible: Bool {
+        config.menuBarIconVisible
+    }
+
+    var dockIconVisible: Bool {
+        config.dockIconVisible
+    }
+
     var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
     }
@@ -63,7 +71,9 @@ final class AppState {
         self.configStore = configStore
         self.notifier = notifier
         self.launchAtLogin = launchAtLogin
-        self.config = (try? configStore.load()) ?? PriorityConfig()
+        var loadedConfig = (try? configStore.load()) ?? PriorityConfig()
+        loadedConfig.ensureControlSurfaceVisible()
+        self.config = loadedConfig
         self.launchAtLoginStatus = launchAtLogin.status
         self.hal.onSnapshot = { [weak self] snapshot in
             Task { @MainActor in
@@ -71,6 +81,7 @@ final class AppState {
             }
         }
         self.hal.start()
+        applyActivationPolicy()
     }
 
     func refresh() {
@@ -117,6 +128,18 @@ final class AppState {
         config.newBluetoothInputsNever = enabled
         persistConfig()
         reconcileNow()
+    }
+
+    func setMenuBarIconVisible(_ visible: Bool) {
+        config.setMenuBarIconVisible(visible)
+        persistConfig()
+        applyActivationPolicy()
+    }
+
+    func setDockIconVisible(_ visible: Bool) {
+        config.setDockIconVisible(visible)
+        persistConfig()
+        applyActivationPolicy()
     }
 
     func setLaunchAtLoginEnabled(_ enabled: Bool) {
@@ -280,6 +303,11 @@ final class AppState {
         } catch {
             lastError = String(describing: error)
         }
+    }
+
+    private func applyActivationPolicy() {
+        guard let app = NSApp else { return }
+        _ = app.setActivationPolicy(config.dockIconVisible ? .regular : .accessory)
     }
 
     private func recordSwitch(selector: DefaultSelector, uid: String, reason: String) {
