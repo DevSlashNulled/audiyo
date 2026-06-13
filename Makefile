@@ -33,11 +33,7 @@ install: release
 	ditto $(RELEASE_APP) /Applications/Audiyo.app
 
 package: release
-	rm -rf $(DMG_STAGE) $(DMG)
-	mkdir -p $(DMG_STAGE) $(DIST_DIR)
-	ditto $(RELEASE_APP) $(DMG_STAGE)/Audiyo.app
-	ln -s /Applications $(DMG_STAGE)/Applications
-	hdiutil create -volname Audiyo -srcfolder $(DMG_STAGE) -ov -format UDZO $(DMG)
+	scripts/package-dmg.sh $(RELEASE_APP) $(DMG) $(DMG_STAGE) $(DMG_MOUNT)
 
 verify-package: package
 	rm -rf $(DMG_MOUNT)
@@ -45,6 +41,7 @@ verify-package: package
 	hdiutil attach $(DMG) -nobrowse -mountpoint $(DMG_MOUNT)
 	test -d $(DMG_MOUNT)/Audiyo.app
 	test -L $(DMG_MOUNT)/Applications
+	test -f $(DMG_MOUNT)/.background/background.png
 	hdiutil detach $(DMG_MOUNT)
 	rm -rf $(DMG_MOUNT)
 
