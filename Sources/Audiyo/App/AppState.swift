@@ -1,0 +1,335 @@
+import AppKit
+import Foundation
+import Observation
+import os
+
+@MainActor
+@Observable
+final class AppState {
+    private let logger = Logger(subsystem: "ca.5350.audiyo", category: "app")
+    private let hal: AudioHAL
+    private let configStore: ConfigStore
+    private let notifier: any Notifying
+    private let launchAtLogin: any LaunchAtLoginManaging
+    private let debouncer = Debouncer()
+    private var guardState = EnforcementGuard()
+    private var overrides = ActiveOverrides()
+    private var pendingSnapshot: HALSnapshot?
+    private var applyingSelectors: Set<DefaultSelector> = []
+
+    var endpoints: [Endpoint] = []
+    var defaultInputUID: String?
+    var defaultOutputUID: String?
+    var defaultSystemOutputUID: String?
+    var lastRefresh: Date?
+    var lastError: String?
+    var config: PriorityConfig
+    var badgeState: ReconcileBadgeState = .normal
+    var recentSwitches: [SwitchRecord] = []
+    var outputVolume = 0.0
+    var outputMuted = false
+    var outputVolumeEnabled = false
+    var outputMuteEnabled = false
+    var launchAtLoginStatus: LaunchAtLoginStatus
+
+    var hasHFPWarning: Bool {
+        badgeState == .hfpWarning
+    }
+
+    var masterAuto: Bool {
+        config.masterAutoEnabled
+    }
+
+    var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
+    }
+
+    var buildNumber: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+    }
+
+    var bundlePath: String {
+        Bundle.main.bundleURL.path
+    }
+
+    var installStatusText: String {
+        Bundle.main.bundleURL.standardizedFileURL.path == "/Applications/Audiyo.app"
+            ? "Installed in /Applications"
+            : "Running from development build"
+    }
+
+    init(hal: AudioHAL = AudioHAL(), configStore: ConfigStore = .live, notifier: any Notifying = Notifier(), launchAtLogin: any LaunchAtLoginManaging = LaunchAtLogin()) {
+        self.hal = hal
+        self.configStore = configStore
+        self.notifier = notifier
+        self.launchAtLogin = launchAtLogin
+        self.config = (try? configStore.load()) ?? PriorityConfig()
+        self.launchAtLoginStatus = launchAtLogin.status
+        self.hal.onSnapshot = { [weak self] snapshot in
+            Task { @MainActor in
+                self?.apply(snapshot)
+            }
+        }
+        self.hal.start()
+    }
+
+    func refresh() {
+        hal.refresh()
+    }
+
+    func setAutoEnabled(_ enabled: Bool) {
+        config.masterAutoEnabled = enabled
+        persistConfig()
+        reconcileNow()
+    }
+
+    func setAlertOutput(uid: String?) {
+        config.alertOutputUID = uid
+        persistConfig()
+        reconcileNow()
+    }
+
+    func setMode(_ mode: DeviceMode, for endpoint: Endpoint) {
+        var device = config.knownDevice(uid: endpoint.uid, direction: endpoint.direction) ?? PriorityDevice(uid: endpoint.uid, name: endpoint.name, transport: endpoint.transport)
+        device.mode = mode
+        config.upsert(device, direction: endpoint.direction)
+        persistConfig()
+        reconcileNow()
+    }
+
+    func setKnownDevice(_ device: PriorityDevice, direction: AudioDirection) {
+        config.upsert(device, direction: direction)
+        persistConfig()
+        reconcileNow()
+    }
+
+    func setNotificationsEnabled(_ enabled: Bool) {
+        config.notificationsEnabled = enabled
+        persistConfig()
+        if enabled {
+            Task {
+                _ = await notifier.requestAuthorization()
+            }
+        }
+    }
+
+    func setNewBluetoothInputsNever(_ enabled: Bool) {
+        config.newBluetoothInputsNever = enabled
+        persistConfig()
+        reconcileNow()
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        do {
+            launchAtLoginStatus = try launchAtLogin.setEnabled(enabled)
+        } catch {
+            launchAtLoginStatus = launchAtLogin.status
+            lastError = String(describing: error)
+        }
+    }
+
+    func diagnosticsReport(now: Date = Date()) -> DiagnosticsReport {
+        DiagnosticsReport(
+            generatedAt: now,
+            bundleURL: Bundle.main.bundleURL,
+            appVersion: appVersion,
+            buildNumber: buildNumber,
+            config: config,
+            endpoints: endpoints,
+            defaultInputUID: defaultInputUID,
+            defaultOutputUID: defaultOutputUID,
+            defaultSystemOutputUID: defaultSystemOutputUID,
+            recentSwitches: recentSwitches,
+            lastError: lastError
+        )
+    }
+
+    func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = "Export Audiyo Diagnostics"
+        panel.nameFieldStringValue = "Audiyo-Diagnostics.txt"
+        panel.allowedContentTypes = [.plainText]
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            try diagnosticsReport().render().write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            lastError = String(describing: error)
+        }
+    }
+
+    func setOutputVolume(_ volume: Double) {
+        outputVolume = min(max(volume, 0), 1)
+        guard let endpoint = defaultOutputEndpoint, outputVolumeEnabled else { return }
+        hal.setVolume(Float(outputVolume), deviceID: endpoint.deviceID, direction: .output) { [weak self] result in
+            Task { @MainActor in
+                if case .failure(let error) = result {
+                    self?.lastError = String(describing: error)
+                }
+            }
+        }
+    }
+
+    func setOutputMuted(_ muted: Bool) {
+        outputMuted = muted
+        guard let endpoint = defaultOutputEndpoint, outputMuteEnabled else { return }
+        hal.setMuted(muted, deviceID: endpoint.deviceID, direction: .output) { [weak self] result in
+            Task { @MainActor in
+                if case .failure(let error) = result {
+                    self?.lastError = String(describing: error)
+                }
+            }
+        }
+    }
+
+    func movePriority(direction: AudioDirection, from source: IndexSet, to destination: Int) {
+        var priority = config.priority(for: direction)
+        priority.move(fromOffsets: source, toOffset: destination)
+        config.setPriority(priority, for: direction)
+        persistConfig()
+        reconcileNow()
+    }
+
+    func forget(_ device: PriorityDevice, direction: AudioDirection) {
+        config.remove(uid: device.uid, direction: direction)
+        persistConfig()
+        reconcileNow()
+    }
+
+    func userSelect(_ endpoint: Endpoint) {
+        if endpoint.direction == .input {
+            overrides.inputUID = endpoint.uid
+        } else {
+            overrides.outputUID = endpoint.uid
+        }
+        let selector: DefaultSelector = endpoint.direction == .input ? .input : .output
+        applyDefault(uid: endpoint.uid, selector: selector, reason: "manual")
+    }
+
+    private func apply(_ snapshot: HALSnapshot) {
+        endpoints = snapshot.endpoints.sorted()
+        defaultInputUID = snapshot.defaultInputUID
+        defaultOutputUID = snapshot.defaultOutputUID
+        defaultSystemOutputUID = snapshot.defaultSystemOutputUID
+        lastRefresh = snapshot.createdAt
+        lastError = snapshot.error
+        refreshOutputVolume()
+
+        logger.info("snapshot endpoints=\(snapshot.endpoints.count) defaultInput=\(snapshot.defaultInputUID ?? "nil") defaultOutput=\(snapshot.defaultOutputUID ?? "nil") defaultSystemOutput=\(snapshot.defaultSystemOutputUID ?? "nil")")
+        pendingSnapshot = snapshot
+        debouncer.schedule { [weak self] in
+            Task { @MainActor in
+                self?.reconcileNow()
+            }
+        }
+    }
+
+    private func reconcileNow() {
+        guard let snapshot = pendingSnapshot else { return }
+        let decision = Reconciler().reconcile(
+            snapshot: snapshot,
+            config: config,
+            overrides: overrides,
+            policies: EnginePolicies(
+                newBluetoothInputMode: config.newBluetoothInputsNever ? .never : .automatic,
+                newInputMode: .automatic,
+                newOutputMode: .automatic
+            ),
+            masterAuto: masterAuto,
+            suspendedDefaults: guardState.suspendedDefaults(at: Date())
+        )
+        config = decision.configAmendments
+        badgeState = decision.badgeState
+        persistConfig()
+
+        if let change = decision.desiredInput {
+            applyDefault(uid: change.uid, selector: .input, reason: "reconcile")
+        }
+        if let change = decision.desiredOutput {
+            applyDefault(uid: change.uid, selector: .output, reason: "reconcile")
+        }
+        if let uid = decision.desiredSystemOutputUID {
+            applyDefault(uid: uid, selector: .systemOutput, reason: "alert")
+        }
+    }
+
+    private func applyDefault(uid: String, selector: DefaultSelector, reason: String) {
+        guard !applyingSelectors.contains(selector), !guardState.isSuspended(selector: selector, uid: uid, at: Date()) else {
+            return
+        }
+
+        applyingSelectors.insert(selector)
+        _ = guardState.recordReassertion(selector: selector, uid: uid, at: Date())
+        hal.setDefault(uid: uid, selector: selector) { [weak self] result in
+            Task { @MainActor in
+                self?.applyingSelectors.remove(selector)
+                switch result {
+                case .success:
+                    self?.recordSwitch(selector: selector, uid: uid, reason: reason)
+                case .failure(let error):
+                    self?.lastError = String(describing: error)
+                }
+            }
+        }
+    }
+
+    private func persistConfig() {
+        do {
+            try configStore.save(config)
+        } catch {
+            lastError = String(describing: error)
+        }
+    }
+
+    private func recordSwitch(selector: DefaultSelector, uid: String, reason: String) {
+        let name = endpoints.first { $0.uid == uid && $0.direction == selector.direction }?.name ?? uid
+        recentSwitches.insert(SwitchRecord(date: Date(), selector: selector, uid: uid, name: name, reason: reason), at: 0)
+        recentSwitches = Array(recentSwitches.prefix(10))
+
+        guard config.notificationsEnabled else { return }
+        Task {
+            await notifier.deliver(SwitchNotification(title: "Audiyo switched \(selector.label)", body: name))
+        }
+    }
+
+    private var defaultOutputEndpoint: Endpoint? {
+        endpoints.first { $0.uid == defaultOutputUID && $0.direction == .output }
+    }
+
+    private func refreshOutputVolume() {
+        guard let endpoint = defaultOutputEndpoint else {
+            outputVolumeEnabled = false
+            outputMuteEnabled = false
+            return
+        }
+
+        hal.volumeState(deviceID: endpoint.deviceID, direction: .output) { [weak self] result in
+            Task { @MainActor in
+                switch result {
+                case .success(let state):
+                    if let volume = state.volume {
+                        self?.outputVolume = Double(volume)
+                    }
+                    if let muted = state.isMuted {
+                        self?.outputMuted = muted
+                    }
+                    self?.outputVolumeEnabled = state.isVolumeSettable
+                    self?.outputMuteEnabled = state.isMuteSettable
+                case .failure:
+                    self?.outputVolumeEnabled = false
+                    self?.outputMuteEnabled = false
+                }
+            }
+        }
+    }
+}
+
+struct SwitchRecord: Identifiable, Equatable {
+    let id = UUID()
+    var date: Date
+    var selector: DefaultSelector
+    var uid: String
+    var name: String
+    var reason: String
+}
