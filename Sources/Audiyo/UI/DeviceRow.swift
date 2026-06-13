@@ -4,12 +4,11 @@ struct DeviceRow: View {
     let endpoint: Endpoint
     let isDefault: Bool
     let isSystemDefault: Bool
-    var mode: DeviceMode = .automatic
-    var action: (() -> Void)?
+    let action: () -> Void
 
     var body: some View {
         Button {
-            action?()
+            action()
         } label: {
             HStack(spacing: 8) {
                 TransportIcon(endpoint: endpoint, highlighted: isDefault)
@@ -27,11 +26,6 @@ struct DeviceRow: View {
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
-                        if mode == .never {
-                            Text("never")
-                                .font(.caption2)
-                                .foregroundStyle(.orange)
-                        }
                     }
 
                     Text(detailText)
@@ -44,7 +38,6 @@ struct DeviceRow: View {
             }
         }
         .buttonStyle(.plain)
-        .disabled(action == nil)
         .contentShape(Rectangle())
     }
 
@@ -52,5 +45,4 @@ struct DeviceRow: View {
         let rate = endpoint.sampleRate > 0 ? "\(Int(endpoint.sampleRate)) Hz" : "unknown rate"
         return "\(endpoint.transport.rawValue) · \(endpoint.channels) ch · \(rate)"
     }
-
 }

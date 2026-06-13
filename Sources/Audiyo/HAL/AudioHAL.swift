@@ -47,29 +47,6 @@ final class AudioHAL {
         }
     }
 
-    func consumeSelfEvent(selector: DefaultSelector, uid: String, now: Date = Date()) -> Bool {
-        queue.sync {
-            pendingDefaultSets.expire(now: now)
-            guard let snapshot = try? readSnapshot(),
-                  let endpoint = snapshot.endpoints.first(where: { $0.uid == uid && $0.direction == selector.direction }) else {
-                return false
-            }
-            return pendingDefaultSets.consume(selector: selector.halSelector, deviceID: endpoint.deviceID, now: now) != nil
-        }
-    }
-
-    func setDefaultInput(deviceID: AudioDeviceID, completion: (@Sendable (Result<Void, Error>) -> Void)? = nil) {
-        setDefaultDevice(deviceID: deviceID, selector: .input, completion: completion)
-    }
-
-    func setDefaultOutput(deviceID: AudioDeviceID, completion: (@Sendable (Result<Void, Error>) -> Void)? = nil) {
-        setDefaultDevice(deviceID: deviceID, selector: .output, completion: completion)
-    }
-
-    func setDefaultSystemOutput(deviceID: AudioDeviceID, completion: (@Sendable (Result<Void, Error>) -> Void)? = nil) {
-        setDefaultDevice(deviceID: deviceID, selector: .systemOutput, completion: completion)
-    }
-
     func volumeState(deviceID: AudioDeviceID, direction: AudioDirection, completion: @escaping @Sendable (Result<HALVolumeState, Error>) -> Void) {
         queue.async {
             completion(Result {
@@ -91,28 +68,6 @@ final class AudioHAL {
             completion?(Result {
                 try self.writeMute(muted, deviceID: deviceID, direction: direction)
             })
-        }
-    }
-
-    func deviceIsRunningSomewhere(deviceID: AudioDeviceID, completion: @escaping @Sendable (Result<Bool, Error>) -> Void) {
-        queue.async {
-            completion(Result {
-                try deviceID.readBool(AudioObjectPropertyAddress(selector: kAudioDevicePropertyDeviceIsRunningSomewhere))
-            })
-        }
-    }
-
-    private func setDefaultDevice(deviceID: AudioDeviceID, selector: DefaultSelector, completion: (@Sendable (Result<Void, Error>) -> Void)?) {
-        queue.async {
-            do {
-                try self.waitUntilAlive(deviceID: deviceID)
-                _ = self.pendingDefaultSets.record(selector: selector.halSelector, deviceID: deviceID)
-                try AudioObjectID.system.writeAudioDeviceID(deviceID, selector: selector.coreAudioSelector)
-                completion?(.success(()))
-                self.emitSnapshot()
-            } catch {
-                completion?(.failure(error))
-            }
         }
     }
 
