@@ -25,7 +25,8 @@ struct MenuView: View {
                 volume: Binding(get: { appState.outputVolume }, set: { appState.setOutputVolume($0) }),
                 isMuted: Binding(get: { appState.outputMuted }, set: { appState.setOutputMuted($0) }),
                 isVolumeEnabled: appState.outputVolumeEnabled,
-                isMuteEnabled: appState.outputMuteEnabled
+                isMuteEnabled: appState.outputMuteEnabled,
+                onVolumeEditingChanged: { appState.setOutputVolumeEditing($0) }
             )
 
             Divider()

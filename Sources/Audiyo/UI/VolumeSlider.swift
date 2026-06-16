@@ -6,6 +6,7 @@ struct VolumeSlider: View {
     @Binding var isMuted: Bool
     var isVolumeEnabled: Bool
     var isMuteEnabled: Bool
+    var onVolumeEditingChanged: (Bool) -> Void = { _ in }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -18,7 +19,7 @@ struct VolumeSlider: View {
             .disabled(!isMuteEnabled)
             .help(isMuted ? "Unmute \(title)" : "Mute \(title)")
 
-            Slider(value: $volume, in: 0...1)
+            Slider(value: $volume, in: 0...1, onEditingChanged: onVolumeEditingChanged)
                 .disabled(!isVolumeEnabled)
                 .help(title)
         }

@@ -3,6 +3,8 @@ import CoreAudio
 import Foundation
 import os
 
+private let audioControlElements: [AudioObjectPropertyElement] = [kAudioObjectPropertyElementMain, 1]
+
 final class AudioHAL {
     private let queue = DispatchQueue(label: "ca.5350.audiyo.hal")
     private var isStarted = false
@@ -10,6 +12,7 @@ final class AudioHAL {
     private var pendingDefaultSets = HALDefaultSetLedger()
 
     var onSnapshot: (@Sendable (HALSnapshot) -> Void)?
+    var onVolumeChange: (@Sendable () -> Void)?
 
     func start() {
         queue.async {
@@ -108,7 +111,7 @@ final class AudioHAL {
             deviceID: deviceID,
             selector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
             direction: direction,
-            elements: [kAudioObjectPropertyElementMain, 1]
+            elements: audioControlElements
         )
     }
 
@@ -117,7 +120,7 @@ final class AudioHAL {
             deviceID: deviceID,
             selector: kAudioDevicePropertyMute,
             direction: direction,
-            elements: [kAudioObjectPropertyElementMain, 1]
+            elements: audioControlElements
         )
     }
 
@@ -198,15 +201,27 @@ final class AudioHAL {
             [
                 AudioObjectPropertyAddress(selector: kAudioDevicePropertyNominalSampleRate),
                 AudioObjectPropertyAddress(selector: kAudioDevicePropertyDeviceIsAlive),
-                AudioObjectPropertyAddress(selector: kAudioDevicePropertyDeviceIsRunningSomewhere),
-                AudioObjectPropertyAddress(mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain),
-                AudioObjectPropertyAddress(mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain),
-                AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeInput, mElement: kAudioObjectPropertyElementMain),
-                AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+                AudioObjectPropertyAddress(selector: kAudioDevicePropertyDeviceIsRunningSomewhere)
             ].forEach { address in
                 registerListener(objectID: deviceID, address: address)
             }
+
+            volumeControlAddresses(for: deviceID).forEach { address in
+                registerListener(objectID: deviceID, address: address)
+            }
         }
+    }
+
+    private func volumeControlAddresses(for deviceID: AudioDeviceID) -> [AudioObjectPropertyAddress] {
+        AudioDirection.allCases.flatMap { direction in
+            audioControlElements.flatMap { element in
+                [
+                    AudioObjectPropertyAddress(mSelector: kAudioHardwareServiceDeviceProperty_VirtualMainVolume, mScope: direction.coreAudioScope, mElement: element),
+                    AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute, mScope: direction.coreAudioScope, mElement: element)
+                ]
+            }
+        }
+        .filter { deviceID.hasProperty($0) }
     }
 
     private func registerListener(objectID: AudioObjectID, address: AudioObjectPropertyAddress) {
@@ -232,6 +247,11 @@ final class AudioHAL {
     }
 
     private func handlePropertyEvent(objectID: AudioObjectID, address: AudioObjectPropertyAddress) {
+        if isVolumeControlEvent(address) {
+            onVolumeChange?()
+            return
+        }
+
         if objectID == AudioObjectID.system,
            let selector = DefaultSelector(coreAudioSelector: address.mSelector),
            let deviceID = try? AudioObjectID.system.readAudioDeviceID(selector: address.mSelector),
@@ -239,6 +259,10 @@ final class AudioHAL {
             Logger.hal.debug("consumed self default event selector=\(address.mSelector) deviceID=\(deviceID)")
         }
         emitSnapshot()
+    }
+
+    private func isVolumeControlEvent(_ address: AudioObjectPropertyAddress) -> Bool {
+        address.mSelector == kAudioHardwareServiceDeviceProperty_VirtualMainVolume || address.mSelector == kAudioDevicePropertyMute
     }
 }
 

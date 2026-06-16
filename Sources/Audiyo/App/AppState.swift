@@ -16,6 +16,7 @@ final class AppState {
     private var overrides = ActiveOverrides()
     private var pendingSnapshot: HALSnapshot?
     private var applyingSelectors: Set<DefaultSelector> = []
+    private var isEditingOutputVolume = false
 
     var endpoints: [Endpoint] = []
     var defaultInputUID: String?
@@ -78,6 +79,12 @@ final class AppState {
         self.hal.onSnapshot = { [weak self] snapshot in
             Task { @MainActor in
                 self?.apply(snapshot)
+            }
+        }
+        self.hal.onVolumeChange = { [weak self] in
+            Task { @MainActor in
+                guard let self, !self.isEditingOutputVolume else { return }
+                self.refreshOutputVolume()
             }
         }
         self.hal.start()
@@ -205,6 +212,13 @@ final class AppState {
                     self?.lastError = String(describing: error)
                 }
             }
+        }
+    }
+
+    func setOutputVolumeEditing(_ editing: Bool) {
+        isEditingOutputVolume = editing
+        if !editing {
+            refreshOutputVolume()
         }
     }
 
@@ -338,7 +352,7 @@ final class AppState {
             Task { @MainActor in
                 switch result {
                 case .success(let state):
-                    if let volume = state.volume {
+                    if let volume = state.volume, self?.isEditingOutputVolume != true {
                         self?.outputVolume = Double(volume)
                     }
                     if let muted = state.isMuted {
