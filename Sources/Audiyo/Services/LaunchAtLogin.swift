@@ -67,7 +67,7 @@ final class LaunchAtLogin: LaunchAtLoginManaging {
         case .requiresApproval:
             return .requiresApproval
         case .notFound:
-            return .unavailable("Audiyo must be installed in /Applications first.")
+            return .disabled
         case .unknown:
             return .unavailable("Unknown login item status.")
         }
