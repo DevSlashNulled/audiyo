@@ -155,16 +155,23 @@ private struct PriorityPane: View {
                 }
                 .padding(.top, 6)
             } label: {
-                HStack {
-                    Text("Other devices (\(otherDevices.count))")
-                        .font(.headline)
-                    Spacer()
-                    if showsOtherDevices && otherDevices.count > 2 {
-                        Text("Scroll for more")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                Button {
+                    showsOtherDevices.toggle()
+                } label: {
+                    HStack {
+                        Text("Other devices (\(otherDevices.count))")
+                            .font(.headline)
+                        Spacer()
+                        if showsOtherDevices && otherDevices.count > 2 {
+                            Text("Scroll for more")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityValue(showsOtherDevices ? "Expanded" : "Collapsed")
             }
         }
     }
