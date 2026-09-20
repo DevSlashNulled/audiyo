@@ -33,18 +33,21 @@ private struct DevicesTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            AutomaticSwitchingView()
-                .padding(12)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+            HStack(alignment: .top, spacing: 16) {
+                AutomaticSwitchingView()
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-            Picker("Device list", selection: $direction) {
-                Text("Sound output").tag(AudioDirection.output)
-                Text("Microphone").tag(AudioDirection.input)
+                Picker("Device list", selection: $direction) {
+                    Text("Sound output").tag(AudioDirection.output)
+                    Text("Microphone").tag(AudioDirection.input)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .accessibilityLabel("Device list")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 360)
-            .accessibilityLabel("Device list")
+            .padding(12)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
 
             PriorityPane(direction: direction)
 
