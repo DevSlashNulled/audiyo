@@ -28,12 +28,14 @@ struct Reconciler {
         snapshot: HALSnapshot,
         config: PriorityConfig,
         overrides: ActiveOverrides = ActiveOverrides(),
-        policies: EnginePolicies = .default,
         masterAuto: Bool = true,
         suspendedDefaults: [AudioDirection: Date] = [:]
     ) -> ReconcileDecision {
-        let amendedConfig = amend(config: config, with: snapshot.endpoints, policies: policies, now: snapshot.createdAt)
         let badgeState = badgeState(for: snapshot, suspendedDefaults: suspendedDefaults)
+        guard snapshot.error == nil else {
+            return ReconcileDecision(configAmendments: config, badgeState: badgeState)
+        }
+        let amendedConfig = amend(config: config, with: snapshot.endpoints, now: snapshot.createdAt)
 
         guard masterAuto else {
             return ReconcileDecision(configAmendments: amendedConfig, badgeState: badgeState)
@@ -126,12 +128,20 @@ struct Reconciler {
         return nil
     }
 
-    private func amend(config: PriorityConfig, with endpoints: [Endpoint], policies: EnginePolicies, now: Date) -> PriorityConfig {
+    private func amend(config: PriorityConfig, with endpoints: [Endpoint], now: Date) -> PriorityConfig {
         var config = config
-        appendMissingDevices(direction: .input, endpoints: endpoints, config: &config, policies: policies, now: now)
-        appendMissingDevices(direction: .output, endpoints: endpoints, config: &config, policies: policies, now: now)
+        appendMissingDevices(direction: .input, endpoints: endpoints, config: &config, now: now)
+        appendMissingDevices(direction: .output, endpoints: endpoints, config: &config, now: now)
         markSeenDevices(direction: .input, endpoints: endpoints, config: &config, now: now)
         markSeenDevices(direction: .output, endpoints: endpoints, config: &config, now: now)
+
+        let cutoff = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let isStale = { (device: PriorityDevice) in
+            !device.isUserConfigured && (device.lastSeen.map { $0 <= cutoff } ?? false)
+        }
+        config.input.removeAll(where: isStale)
+        let pinnedOutputUID = config.pinnedSystemOutputUID
+        config.output.removeAll { $0.uid != pinnedOutputUID && isStale($0) }
         return config
     }
 
@@ -139,7 +149,6 @@ struct Reconciler {
         direction: AudioDirection,
         endpoints: [Endpoint],
         config: inout PriorityConfig,
-        policies: EnginePolicies,
         now: Date
     ) {
         let knownUIDs = Set(config.devices(for: direction).map(\.uid))
@@ -151,8 +160,9 @@ struct Reconciler {
                     uid: endpoint.uid,
                     name: endpoint.name,
                     transport: endpoint.transport,
-                    mode: defaultMode(for: endpoint, policies: policies),
-                    lastSeen: now
+                    mode: .never,
+                    lastSeen: now,
+                    isUserConfigured: direction == .output && endpoint.uid == config.pinnedSystemOutputUID
                 )
             }
 
@@ -167,23 +177,17 @@ struct Reconciler {
 
     private func markSeenDevices(direction: AudioDirection, endpoints: [Endpoint], config: inout PriorityConfig, now: Date) {
         let connectedUIDs = Set(endpoints.filter { $0.direction == direction }.map(\.uid))
+        // Undated records get one retention period before they can expire.
         switch direction {
         case .input:
-            for index in config.input.indices where connectedUIDs.contains(config.input[index].uid) {
+            for index in config.input.indices where connectedUIDs.contains(config.input[index].uid) || config.input[index].lastSeen == nil {
                 config.input[index].lastSeen = now
             }
         case .output:
-            for index in config.output.indices where connectedUIDs.contains(config.output[index].uid) {
+            for index in config.output.indices where connectedUIDs.contains(config.output[index].uid) || config.output[index].lastSeen == nil {
                 config.output[index].lastSeen = now
             }
         }
-    }
-
-    private func defaultMode(for endpoint: Endpoint, policies: EnginePolicies) -> PriorityMode {
-        if endpoint.direction == .input && endpoint.transport == .bluetooth {
-            return policies.newBluetoothInputMode
-        }
-        return endpoint.direction == .input ? policies.newInputMode : policies.newOutputMode
     }
 
     private func badgeState(for snapshot: HALSnapshot, suspendedDefaults: [AudioDirection: Date]) -> ReconcileBadgeState {

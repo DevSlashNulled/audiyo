@@ -15,13 +15,30 @@ struct PriorityDevice: Codable, Equatable, Identifiable {
     var transport: TransportKind
     var mode: PriorityMode
     var lastSeen: Date?
+    var isUserConfigured: Bool
 
-    init(uid: String, name: String, transport: TransportKind, mode: PriorityMode = .automatic, lastSeen: Date? = nil) {
+    init(uid: String, name: String, transport: TransportKind, mode: PriorityMode = .automatic, lastSeen: Date? = nil, isUserConfigured: Bool = false) {
         self.uid = uid
         self.name = name
         self.transport = transport
         self.mode = mode
         self.lastSeen = lastSeen
+        self.isUserConfigured = isUserConfigured
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case uid, name, transport, mode, lastSeen, isUserConfigured
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        uid = try container.decode(String.self, forKey: .uid)
+        name = try container.decode(String.self, forKey: .name)
+        transport = try container.decode(TransportKind.self, forKey: .transport)
+        mode = try container.decode(PriorityMode.self, forKey: .mode)
+        lastSeen = try container.decodeIfPresent(Date.self, forKey: .lastSeen)
+        // Let legacy AirPlay history expire; preserve other existing priorities.
+        isUserConfigured = try container.decodeIfPresent(Bool.self, forKey: .isUserConfigured) ?? (transport != .airPlay)
     }
 }
 
@@ -32,7 +49,6 @@ struct PriorityConfig: Codable, Equatable {
     var pinnedSystemOutputUID: String?
     var masterAutoEnabled: Bool = true
     var notificationsEnabled: Bool = false
-    var newBluetoothInputsNever: Bool = true
     var menuBarIconVisible: Bool = true
     var dockIconVisible: Bool = false
 
@@ -49,7 +65,6 @@ struct PriorityConfig: Codable, Equatable {
         case pinnedSystemOutputUID
         case masterAutoEnabled
         case notificationsEnabled
-        case newBluetoothInputsNever
         case menuBarIconVisible
         case dockIconVisible
     }
@@ -62,7 +77,6 @@ struct PriorityConfig: Codable, Equatable {
         pinnedSystemOutputUID = try container.decodeIfPresent(String.self, forKey: .pinnedSystemOutputUID)
         masterAutoEnabled = try container.decodeIfPresent(Bool.self, forKey: .masterAutoEnabled) ?? true
         notificationsEnabled = try container.decodeIfPresent(Bool.self, forKey: .notificationsEnabled) ?? false
-        newBluetoothInputsNever = try container.decodeIfPresent(Bool.self, forKey: .newBluetoothInputsNever) ?? true
         menuBarIconVisible = try container.decodeIfPresent(Bool.self, forKey: .menuBarIconVisible) ?? true
         dockIconVisible = try container.decodeIfPresent(Bool.self, forKey: .dockIconVisible) ?? false
         ensureControlSurfaceVisible()
@@ -82,8 +96,28 @@ struct PriorityConfig: Codable, Equatable {
         set { pinnedSystemOutputUID = newValue }
     }
 
+    func preferredDevices(for direction: AudioDirection) -> [PriorityDevice] {
+        devices(for: direction).filter { $0.mode == .automatic }
+    }
+
     func priority(for direction: AudioDirection) -> [String] {
-        devices(for: direction).map(\.uid)
+        preferredDevices(for: direction).map(\.uid)
+    }
+
+    mutating func addToPriority(uid: String, direction: AudioDirection) {
+        guard var device = knownDevice(uid: uid, direction: direction), device.mode != .automatic else { return }
+        let order = priority(for: direction) + [uid]
+        device.mode = .automatic
+        device.isUserConfigured = true
+        upsert(device, direction: direction)
+        setPriority(order, for: direction)
+    }
+
+    mutating func removeFromPriority(uid: String, direction: AudioDirection) {
+        guard var device = knownDevice(uid: uid, direction: direction) else { return }
+        device.mode = .never
+        device.isUserConfigured = true
+        upsert(device, direction: direction)
     }
 
     mutating func setPriority(_ priority: [String], for direction: AudioDirection) {
@@ -122,6 +156,9 @@ struct PriorityConfig: Codable, Equatable {
             input.removeAll { $0.uid == uid }
         case .output:
             output.removeAll { $0.uid == uid }
+            if pinnedSystemOutputUID == uid {
+                pinnedSystemOutputUID = nil
+            }
         }
     }
 
@@ -197,16 +234,4 @@ struct ActiveOverrides: Equatable {
             return outputUID
         }
     }
-}
-
-struct EnginePolicies: Equatable {
-    var newBluetoothInputMode: PriorityMode
-    var newInputMode: PriorityMode
-    var newOutputMode: PriorityMode
-
-    static let `default` = EnginePolicies(
-        newBluetoothInputMode: .never,
-        newInputMode: .automatic,
-        newOutputMode: .automatic
-    )
 }

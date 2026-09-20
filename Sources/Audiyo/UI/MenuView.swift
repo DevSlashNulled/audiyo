@@ -5,129 +5,164 @@ struct MenuView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openSettings) private var openSettings
 
+    private var outputs: [Endpoint] { connectedDevices(for: .output) }
+    private var inputs: [Endpoint] { connectedDevices(for: .input) }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            header
+            Label("Audiyo", systemImage: "speaker.wave.2")
+                .font(.headline)
 
-            DeviceSection(
-                title: "Output",
-                endpoints: appState.endpoints.filter { $0.direction == .output },
-                defaultUID: appState.defaultOutputUID,
-                systemDefaultUID: appState.defaultSystemOutputUID,
-                onSelect: { endpoint in
-                    appState.userSelect(endpoint)
-                    dismiss()
-                }
-            )
-
-            VolumeSlider(
-                title: "Output volume",
-                volume: Binding(get: { appState.outputVolume }, set: { appState.setOutputVolume($0) }),
-                isMuted: Binding(get: { appState.outputMuted }, set: { appState.setOutputMuted($0) }),
-                isVolumeEnabled: appState.outputVolumeEnabled,
-                isMuteEnabled: appState.outputMuteEnabled,
-                onVolumeEditingChanged: { appState.setOutputVolumeEditing($0) }
-            )
+            AutomaticSwitchingView()
 
             Divider()
 
-            DeviceSection(
-                title: "Input",
-                endpoints: appState.endpoints.filter { $0.direction == .input },
-                defaultUID: appState.defaultInputUID,
-                systemDefaultUID: nil,
-                onSelect: { endpoint in
-                    appState.userSelect(endpoint)
-                    dismiss()
+            VStack(alignment: .leading, spacing: 14) {
+                DeviceSection(
+                    title: "Sound output",
+                    endpoints: outputs,
+                    defaultUID: appState.defaultOutputUID,
+                    systemDefaultUID: appState.defaultSystemOutputUID,
+                    onSelect: select
+                )
+
+                if outputs.contains(where: { $0.uid == appState.defaultOutputUID }) {
+                    VolumeSlider(
+                        title: "Output volume",
+                        volume: Binding(get: { appState.outputVolume }, set: { appState.setOutputVolume($0) }),
+                        isMuted: Binding(get: { appState.outputMuted }, set: { appState.setOutputMuted($0) }),
+                        isVolumeEnabled: appState.outputVolumeEnabled,
+                        isMuteEnabled: appState.outputMuteEnabled,
+                        onVolumeEditingChanged: { appState.setOutputVolumeEditing($0) }
+                    )
                 }
-            )
 
-            Divider()
+                Divider()
 
-            footerControls
+                DeviceSection(
+                    title: "Microphone",
+                    endpoints: inputs,
+                    defaultUID: appState.defaultInputUID,
+                    systemDefaultUID: nil,
+                    onSelect: select
+                )
+            }
+
+            Text("Choose a device for now. Set lasting preferences in Device priorities.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             Divider()
 
             HStack {
-                Button("Refresh") {
-                    appState.refresh()
-                }
-                Spacer()
-                Button {
+                Button("Device priorities…") {
+                    appState.settingsTab = .priorities
                     NSApp.activate(ignoringOtherApps: true)
                     openSettings()
                     dismiss()
-                } label: {
-                    Image(systemName: "gearshape")
-                        .accessibilityLabel("Settings")
                 }
-                .help("Open Settings")
+                Spacer()
+                Button("Refresh") {
+                    appState.refresh()
+                }
+                .help("Check for connected audio devices again.")
                 Button("Quit") {
                     NSApp.terminate(nil)
                 }
+                .help("Quit Audiyo and stop automatic switching.")
             }
             .buttonStyle(.borderless)
         }
         .padding(14)
     }
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Audiyo")
-                    .font(.headline)
-                Text(statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    private func select(_ endpoint: Endpoint) {
+        appState.userSelect(endpoint)
+        dismiss()
+    }
+
+    private func connectedDevices(for direction: AudioDirection) -> [Endpoint] {
+        let priority = appState.config.priority(for: direction)
+        let currentUID = direction == .input ? appState.defaultInputUID : appState.defaultOutputUID
+        return appState.endpoints.filter { $0.direction == direction }.sorted {
+            if ($0.uid == currentUID) != ($1.uid == currentUID) {
+                return $0.uid == currentUID
             }
-            Spacer()
-            Image(systemName: appState.hasHFPWarning ? "waveform.badge.exclamationmark" : "speaker.wave.2")
-                .foregroundStyle(appState.hasHFPWarning ? .orange : .secondary)
+            let first = priority.firstIndex(of: $0.uid) ?? Int.max
+            let second = priority.firstIndex(of: $1.uid) ?? Int.max
+            return first == second ? $0 < $1 : first < second
         }
     }
+}
 
-    private var statusText: String {
-        if let error = appState.lastError {
-            return error
-        }
-        guard let lastRefresh = appState.lastRefresh else {
-            return "Loading audio devices"
-        }
-        return "Updated \(lastRefresh.formatted(date: .omitted, time: .standard))"
-    }
+struct AutomaticSwitchingView: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.openSettings) private var openSettings
 
-    private var footerControls: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle("Auto", isOn: Binding(
+            Toggle("Automatic switching", isOn: Binding(
                 get: { appState.masterAuto },
                 set: { appState.setAutoEnabled($0) }
             ))
+            .toggleStyle(.switch)
+            .help("Let Audiyo choose your highest-priority available devices.")
 
-            Picker("Alerts", selection: Binding(
-                get: { appState.config.alertOutputUID ?? "" },
-                set: { appState.setAlertOutput(uid: $0.isEmpty ? nil : $0) }
-            )) {
-                Text("Follow output").tag("")
-                ForEach(appState.endpoints.filter { $0.direction == .output }) { endpoint in
-                    Text(endpoint.name).tag(endpoint.uid)
+            Text(!appState.masterAuto
+                 ? "Paused. Audiyo will not switch devices automatically."
+                 : appState.hasManualSelection
+                 ? "Your menu-bar choice takes priority when connected."
+                 : "Follows your numbered lists in Device priorities.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if appState.hasManualSelection {
+                HStack {
+                    Label("Temporary selection", systemImage: "hand.point.up.left")
+                        .font(.caption)
+                        .help("Your menu-bar selection takes priority until you use your list again or quit Audiyo.")
+                    Spacer()
+                    Button("Use my list again") {
+                        appState.resumePriorities()
+                    }
+                    .controlSize(.small)
+                    .help("End the temporary selection and follow your numbered lists again.")
                 }
             }
 
-            DisclosureGroup("Recent switches") {
-                if appState.recentSwitches.isEmpty {
-                    Text("No switches yet")
+            if appState.lastRefresh == nil {
+                Label("Finding audio devices…", systemImage: "magnifyingglass")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if appState.lastError != nil {
+                HStack {
+                    Label("Something needs attention.", systemImage: "exclamationmark.triangle")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(appState.recentSwitches) { entry in
-                        Text("\(entry.selector.label): \(entry.name)")
-                            .font(.caption)
-                            .lineLimit(1)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button("Details…") {
+                        appState.settingsTab = .help
+                        NSApp.activate(ignoringOtherApps: true)
+                        openSettings()
                     }
+                    .controlSize(.small)
                 }
+            }
+
+            if case .suspended(let until) = appState.badgeState, until > Date() {
+                Label("Repeated audio changes detected. Switching is paused briefly.", systemImage: "pause.circle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
+            if appState.hasHFPWarning {
+                Label("Bluetooth call audio is active. Headset microphone use can reduce sound quality.", systemImage: "headphones")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .font(.subheadline)
     }
 }
 
@@ -140,22 +175,44 @@ private struct DeviceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
+            HStack {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if endpoints.count > 3 {
+                    Text("\(endpoints.count) devices · Scroll for more")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             if endpoints.isEmpty {
-                Text("No \(title.lowercased()) devices")
+                Text("No devices available. Connect a device, then choose Refresh.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                ForEach(endpoints) { endpoint in
-                    DeviceRow(
-                        endpoint: endpoint,
-                        isDefault: endpoint.uid == defaultUID,
-                        isSystemDefault: endpoint.uid == systemDefaultUID,
-                        action: { onSelect(endpoint) }
-                    )
+            } else if endpoints.count > 3 {
+                ScrollView {
+                    deviceRows
+                        .padding(.trailing, 8)
                 }
+                .frame(height: 148)
+                .scrollIndicators(.visible)
+            } else {
+                deviceRows
+            }
+        }
+    }
+
+    private var deviceRows: some View {
+        VStack(spacing: 6) {
+            ForEach(endpoints) { endpoint in
+                DeviceRow(
+                    endpoint: endpoint,
+                    isDefault: endpoint.uid == defaultUID,
+                    isSystemDefault: endpoint.uid == systemDefaultUID,
+                    showsIdentifier: endpoints.filter { $0.name == endpoint.name }.count > 1,
+                    action: { onSelect(endpoint) }
+                )
             }
         }
     }

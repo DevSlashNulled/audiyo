@@ -1,72 +1,428 @@
 import SwiftUI
 
+enum SettingsTab: Hashable {
+    case priorities
+    case general
+    case help
+}
+
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        TabView {
-            OverviewTab()
-                .padding()
-                .tabItem { Label("Overview", systemImage: "gauge") }
-
+        TabView(selection: Binding(get: { appState.settingsTab }, set: { appState.settingsTab = $0 })) {
             DevicesTab()
-                .padding()
-                .tabItem { Label("Devices", systemImage: "speaker.wave.2") }
+                .padding(20)
+                .tabItem { Label("Device priorities", systemImage: "list.number") }
+                .tag(SettingsTab.priorities)
 
-            BehaviorTab()
-                .padding()
-                .tabItem { Label("Behavior", systemImage: "switch.2") }
+            GeneralTab()
+                .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
 
-            SupportTab()
-                .padding()
-                .tabItem { Label("Support", systemImage: "info.circle") }
+            HelpTab()
+                .tabItem { Label("Help", systemImage: "questionmark.circle") }
+                .tag(SettingsTab.help)
         }
-        .frame(width: 860, height: 560)
+        .frame(minWidth: 760, idealWidth: 800, minHeight: 600, idealHeight: 640)
     }
 }
 
-private struct OverviewTab: View {
+private struct DevicesTab: View {
+    @State private var direction: AudioDirection = .output
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            AutomaticSwitchingView()
+                .padding(12)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+
+            Picker("Device list", selection: $direction) {
+                Text("Sound output").tag(AudioDirection.output)
+                Text("Microphone").tag(AudioDirection.input)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+            .accessibilityLabel("Device list")
+
+            PriorityPane(direction: direction)
+
+            SettingsHelpText("Devices you add, reorder, remove from your list, or choose for system sounds stay saved. Other devices are forgotten after 7 days offline.")
+        }
+    }
+}
+
+private struct PriorityPane: View {
+    @Environment(AppState.self) private var appState
+    @State private var showsOtherDevices = false
+
+    let direction: AudioDirection
+
+    private var devices: [PriorityDevice] {
+        appState.config.devices(for: direction)
+    }
+
+    private var preferredDevices: [PriorityDevice] {
+        appState.config.preferredDevices(for: direction)
+    }
+
+    private var otherDevices: [PriorityDevice] {
+        devices.filter { $0.mode == .never }
+    }
+
+    private var hasConnectedPreference: Bool {
+        preferredDevices.contains { device in
+            appState.endpoints.contains { $0.uid == device.uid && $0.direction == direction }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Switch to these devices, in this order")
+                        .font(.headline)
+                    Spacer()
+                    Text("Drag to reorder")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Use #1 if connected, otherwise #2, and so on. Switch back when a higher choice reconnects.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            List {
+                if preferredDevices.isEmpty {
+                    VStack(spacing: 6) {
+                        Text("Your list is empty")
+                            .font(.headline)
+                        Text("Expand Other devices below, then add devices in the order you want to use them.")
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(16)
+                }
+
+                ForEach(Array(preferredDevices.enumerated()), id: \.element.id) { entry in
+                    deviceRow(entry.element, position: entry.offset + 1)
+                }
+                .onMove { source, destination in
+                    appState.movePriority(direction: direction, from: source, to: destination)
+                }
+            }
+            .listStyle(.inset)
+            .frame(minHeight: 110)
+            .scrollIndicators(.visible)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(.quaternary, lineWidth: 1)
+                    .allowsHitTesting(false)
+            }
+
+            if !preferredDevices.isEmpty && !hasConnectedPreference {
+                SettingsHelpText("None of the devices in your list are connected.")
+            }
+
+            DisclosureGroup(isExpanded: $showsOtherDevices) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("New devices appear here. Add them to your list, or choose a connected device for now from the menu bar.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    List {
+                        if otherDevices.isEmpty {
+                            Text(devices.isEmpty ? "Connect a device to get started." : "No other devices. Newly detected devices will appear here.")
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 10)
+                        }
+                        ForEach(otherDevices) { device in
+                            deviceRow(device, position: nil)
+                        }
+                    }
+                    .listStyle(.inset)
+                    .frame(height: otherDevices.isEmpty ? 52 : min(132, CGFloat(otherDevices.count) * 64))
+                    .scrollIndicators(.visible)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.quaternary, lineWidth: 1)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(.top, 6)
+            } label: {
+                HStack {
+                    Text("Other devices (\(otherDevices.count))")
+                        .font(.headline)
+                    Spacer()
+                    if showsOtherDevices && otherDevices.count > 2 {
+                        Text("Scroll for more")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func deviceRow(_ device: PriorityDevice, position: Int?) -> some View {
+        let endpoint = appState.endpoints.first { $0.uid == device.uid && $0.direction == direction }
+        let isDefault = endpoint != nil && device.uid == (direction == .input ? appState.defaultInputUID : appState.defaultOutputUID)
+        let status = isDefault ? "In use" : endpoint == nil ? "Offline" : "Available"
+        let needsIdentifier = devices.contains { $0.uid != device.uid && $0.name == device.name }
+        let identifier = needsIdentifier ? " · …\(device.uid.suffix(8))" : ""
+
+        return HStack(spacing: 12) {
+            if let position {
+                Text("\(position)")
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 26)
+                    .accessibilityLabel("Priority \(position)")
+                    .help("Drag to change priority, or use the More menu.")
+            }
+
+            if let endpoint {
+                TransportIcon(endpoint: endpoint, highlighted: isDefault)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: direction == .input ? "mic.slash" : "speaker.slash")
+                    .frame(width: 18)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(device.name)
+                    .font(.body.weight(.medium))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help("\(device.name)\nDevice ID: \(device.uid)")
+
+                Text("\(status) · \(device.transport.rawValue)\(identifier)")
+                    .font(.caption)
+                    .foregroundStyle(isDefault ? Color.accentColor : Color.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+            .help(endpoint == nil ? retentionDescription(for: device) : "\(device.name)\nDevice ID: \(device.uid)")
+
+            if position != nil {
+                Button("Remove from list") {
+                    appState.removeFromPriority(device, direction: direction)
+                }
+                .fixedSize()
+                .help("Move to Other devices. You can still choose this device from the menu bar.")
+                .accessibilityLabel("Remove \(device.name) from your priority list")
+            } else {
+                Button("Add to list") {
+                    appState.addToPriority(device, direction: direction)
+                }
+                .fixedSize()
+                .help("Add to the bottom of your priority list.")
+                .accessibilityLabel("Add \(device.name) to your priority list")
+            }
+
+            Menu {
+                if let position {
+                    Button("Move up") { move(device, by: -1) }
+                        .disabled(position == 1)
+                    Button("Move down") { move(device, by: 1) }
+                        .disabled(position == preferredDevices.count)
+                    Divider()
+                }
+                Button("Forget device", role: .destructive) {
+                    appState.forget(device, direction: direction)
+                }
+                .disabled(endpoint != nil)
+                .help("Only offline devices can be forgotten. They are added again if they reconnect.")
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel("More actions for \(device.name)")
+            .help("Move this device or forget it when offline.")
+        }
+        .buttonStyle(.borderless)
+        .padding(.vertical, 7)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func move(_ device: PriorityDevice, by offset: Int) {
+        guard let index = preferredDevices.firstIndex(where: { $0.uid == device.uid }),
+              preferredDevices.indices.contains(index + offset) else { return }
+        appState.movePriority(
+            direction: direction,
+            from: IndexSet(integer: index),
+            to: offset < 0 ? index - 1 : index + 2
+        )
+    }
+
+    private func retentionDescription(for device: PriorityDevice) -> String {
+        if device.isUserConfigured || (direction == .output && device.uid == appState.config.alertOutputUID) {
+            return "Kept until forgotten"
+        }
+        if let lastSeen = device.lastSeen {
+            return "Last seen \(lastSeen.formatted(date: .abbreviated, time: .omitted)) · Removed after 7 days unseen"
+        }
+        return "Removed after 7 days unseen"
+    }
+}
+
+private struct GeneralTab: View {
+    @Environment(AppState.self) private var appState
+
+    private var outputs: [Endpoint] {
+        appState.endpoints.filter { $0.direction == .output }
+    }
+
+    private var offlineAlertUID: String? {
+        guard let uid = appState.config.alertOutputUID, !outputs.contains(where: { $0.uid == uid }) else { return nil }
+        return uid
+    }
+
+    var body: some View {
+        Form {
+            Section("Audio") {
+                Picker("Play system sounds through", selection: Binding(
+                    get: { appState.config.alertOutputUID ?? "" },
+                    set: { appState.setAlertOutput(uid: $0.isEmpty ? nil : $0) }
+                )) {
+                    Text("Use macOS setting").tag("")
+                    ForEach(outputs) { output in
+                        Text(outputName(uid: output.uid, name: output.name)).tag(output.uid)
+                    }
+                    if let uid = offlineAlertUID {
+                        Text("\(outputName(uid: uid, name: appState.config.knownDevice(uid: uid, direction: .output)?.name ?? "Saved device")) (Offline)")
+                            .tag(uid)
+                    }
+                }
+                .help("A chosen device is used for system sounds while automatic switching is on. Use macOS setting leaves this choice to macOS.")
+
+                if offlineAlertUID != nil {
+                    SettingsHelpText("This device is offline. Automatic switching will use it for system sounds when it returns.")
+                }
+                if !appState.masterAuto && appState.config.alertOutputUID != nil {
+                    SettingsHelpText("Turn on automatic switching in Device priorities to apply this choice.")
+                }
+
+                Toggle("Notify me when audio switches", isOn: Binding(
+                    get: { appState.config.notificationsEnabled },
+                    set: { appState.setNotificationsEnabled($0) }
+                ))
+            }
+
+            Section("Startup") {
+                Toggle("Open Audiyo at login", isOn: Binding(
+                    get: { appState.launchAtLoginStatus == .enabled },
+                    set: { appState.setLaunchAtLoginEnabled($0) }
+                ))
+                .disabled(!appState.launchAtLoginStatus.isAvailable)
+
+                if case .requiresApproval = appState.launchAtLoginStatus {
+                    SettingsHelpText("Approve Audiyo in System Settings to finish enabling launch at login.")
+                }
+                if case .unavailable(let message) = appState.launchAtLoginStatus {
+                    SettingsHelpText(message)
+                }
+            }
+
+            Section("Appearance") {
+                Toggle("Show in the menu bar", isOn: Binding(
+                    get: { appState.menuBarIconVisible },
+                    set: { appState.setMenuBarIconVisible($0) }
+                ))
+
+                Toggle("Show in the Dock", isOn: Binding(
+                    get: { appState.dockIconVisible },
+                    set: { appState.setDockIconVisible($0) }
+                ))
+
+                SettingsHelpText("At least one stays visible so you can always open Audiyo again.")
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func outputName(uid: String, name: String) -> String {
+        let hasDuplicate = outputs.contains { $0.uid != uid && $0.name == name }
+            || appState.config.output.contains { $0.uid != uid && $0.name == name }
+        return hasDuplicate ? "\(name) · …\(uid.suffix(8))" : name
+    }
+}
+
+private struct HelpTab: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         Form {
-            Section("Status") {
-                SettingsHelpText("Current defaults are what macOS is using now. Audiyo compares these against your priority lists when Auto is on.")
-                LabeledContent("Auto", value: appState.masterAuto ? "On" : "Off")
-                    .help("When Auto is on, Audiyo can restore your preferred input, output, and alert routing after device changes.")
-                LabeledContent("Input", value: name(for: appState.defaultInputUID, direction: .input))
-                    .help("The current macOS default input device.")
-                LabeledContent("Output", value: name(for: appState.defaultOutputUID, direction: .output))
-                    .help("The current macOS default output device.")
-                LabeledContent("Alerts", value: name(for: appState.defaultSystemOutputUID, direction: .output))
-                    .help("The current macOS alert and system sound output device.")
-                LabeledContent("Last refresh", value: appState.lastRefresh?.formatted(date: .omitted, time: .standard) ?? "Loading")
-                    .help("The last time Audiyo received a CoreAudio device snapshot.")
+            Section("Current audio") {
+                LabeledContent("Sound output", value: name(for: appState.defaultOutputUID, direction: .output))
+                LabeledContent("Microphone", value: name(for: appState.defaultInputUID, direction: .input))
+                LabeledContent("System sounds", value: name(for: appState.defaultSystemOutputUID, direction: .output))
+                LabeledContent("Last refresh", value: appState.lastRefresh?.formatted(date: .omitted, time: .standard) ?? "Loading…")
+                Button("Refresh devices") { appState.refresh() }
             }
 
-            Section("Install") {
-                SettingsHelpText("Launch at Login is available after Audiyo is installed in /Applications and opened from there.")
+            if let error = appState.lastError {
+                Section("Last error") {
+                    Text(error)
+                        .font(.caption)
+                        .textSelection(.enabled)
+                }
+            }
+
+            Section("Recent changes") {
+                if appState.recentSwitches.isEmpty {
+                    SettingsHelpText("Audio switches will appear here.")
+                }
+                ForEach(appState.recentSwitches) { change in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(change.name)
+                            Group {
+                                switch change.selector {
+                                case .input: Text("Microphone")
+                                case .output: Text("Sound output")
+                                case .systemOutput: Text("System sounds")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(change.date, style: .time)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Troubleshooting") {
+                SettingsHelpText("Save a report with device details, preferences, and recent changes to share when asking for help.")
+                Button {
+                    appState.exportDiagnostics()
+                } label: {
+                    Label("Export diagnostics…", systemImage: "square.and.arrow.down")
+                }
+            }
+
+            Section("About Audiyo") {
+                LabeledContent("Version", value: "\(appState.appVersion) (\(appState.buildNumber))")
                 LabeledContent("Location", value: appState.installStatusText)
-                    .help("Audiyo checks this path because macOS login item registration is only predictable from the installed app.")
                 Text(appState.bundlePath)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                    .help("The app bundle path Audiyo is running from.")
-                if case .unavailable(let message) = appState.launchAtLoginStatus {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let error = appState.lastError {
-                Section("Last Error") {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
             }
         }
         .formStyle(.grouped)
@@ -74,275 +430,9 @@ private struct OverviewTab: View {
 
     private func name(for uid: String?, direction: AudioDirection) -> String {
         guard let uid else { return "None" }
-        return appState.endpoints.first { $0.uid == uid && $0.direction == direction }?.name ?? uid
-    }
-}
-
-private struct DevicesTab: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            SettingsCallout(
-                systemImage: "arrow.up.arrow.down",
-                title: "Priority order",
-                message: "Drag devices up or down to reorder them. Audiyo tries higher Auto devices first; Never devices stay known but are not selected automatically."
-            )
-
-            HStack(spacing: 18) {
-                PriorityPane(direction: .output, title: "Output")
-                    .frame(maxWidth: .infinity)
-                Divider()
-                PriorityPane(direction: .input, title: "Input")
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-}
-
-private struct PriorityPane: View {
-    @Environment(AppState.self) private var appState
-
-    let direction: AudioDirection
-    let title: String
-
-    private var devices: [PriorityDevice] {
-        appState.config.devices(for: direction)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(title)
-                    .font(.title3.weight(.semibold))
-                Spacer()
-                Label("Drag to reorder", systemImage: "line.3.horizontal")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .help("Drag rows up or down to change the \(title.lowercased()) priority order.")
-            }
-
-            Text("Top devices win first when Auto is on. Use Mode to allow automatic selection or keep a device out of automatic routing.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            List {
-                if devices.isEmpty {
-                    Text("Known \(title.lowercased()) devices appear here after Audiyo sees them.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                ForEach(Array(devices.enumerated()), id: \.element.id) { entry in
-                    priorityRow(entry.element, position: entry.offset + 1)
-                        .contextMenu {
-                            Button("Forget", role: .destructive) {
-                                appState.forget(entry.element, direction: direction)
-                            }
-                            .help("Remove this remembered device from Audiyo's priority list.")
-                        }
-                }
-                .onMove { source, destination in
-                    appState.movePriority(direction: direction, from: source, to: destination)
-                }
-            }
-        }
-    }
-
-    private func priorityRow(_ device: PriorityDevice, position: Int) -> some View {
-        let endpoint = appState.endpoints.first { $0.uid == device.uid && $0.direction == direction }
-        let isDefault = device.uid == (direction == .input ? appState.defaultInputUID : appState.defaultOutputUID)
-
-        return HStack(alignment: .top, spacing: 8) {
-            Text("\(position)")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 5))
-                .help("Priority \(position). Lower numbers are tried first.")
-
-            Image(systemName: "line.3.horizontal")
-                .foregroundStyle(.tertiary)
-                .help("Drag this row to reorder the priority list.")
-
-            if let endpoint {
-                TransportIcon(endpoint: endpoint, highlighted: isDefault)
-            } else {
-                Image(systemName: direction == .input ? "mic.slash" : "speaker.slash")
-                    .frame(width: 18)
-                    .foregroundStyle(.secondary)
-                    .help("Audiyo remembers this device, but it is not currently connected.")
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(device.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .help(device.name)
-
-                if isDefault || endpoint == nil {
-                    HStack(spacing: 5) {
-                        if isDefault {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.accentColor)
-                                .help("This is the current macOS default \(direction == .input ? "input" : "output").")
-                        }
-                        if endpoint == nil {
-                            Text("offline")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Text("\(device.transport.rawValue) · \(device.uid.suffix(8))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .layoutPriority(1)
-
-            Picker("Mode", selection: modeBinding(for: device)) {
-                Text("Auto").tag(DeviceMode.automatic)
-                Text("Never").tag(DeviceMode.never)
-            }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(width: 82)
-            .help("Auto lets Audiyo select this device when it is the highest available priority. Never keeps the device remembered but blocks automatic selection.")
-            .accessibilityLabel("Mode for \(device.name)")
-        }
-        .help("Drag to reorder. Higher rows have higher priority.")
-    }
-
-    private func modeBinding(for device: PriorityDevice) -> Binding<DeviceMode> {
-        Binding {
-            appState.config.knownDevice(uid: device.uid, direction: direction)?.mode ?? .automatic
-        } set: { mode in
-            if let endpoint = appState.endpoints.first(where: { $0.uid == device.uid && $0.direction == direction }) {
-                appState.setMode(mode, for: endpoint)
-            } else {
-                var updated = device
-                updated.mode = mode
-                appState.setKnownDevice(updated, direction: direction)
-            }
-        }
-    }
-}
-
-private struct BehaviorTab: View {
-    @Environment(AppState.self) private var appState
-
-    private var outputs: [Endpoint] {
-        appState.endpoints.filter { $0.direction == .output }
-    }
-
-    var body: some View {
-        Form {
-            Section("Automation") {
-                SettingsHelpText("Automation controls whether Audiyo corrects macOS defaults after devices appear, disappear, or change state.")
-                Toggle("Auto", isOn: Binding(
-                    get: { appState.masterAuto },
-                    set: { appState.setAutoEnabled($0) }
-                ))
-                .help("Turn this off to stop Audiyo from automatically changing input, output, or alert defaults.")
-
-                Toggle("New Bluetooth inputs use Never", isOn: Binding(
-                    get: { appState.config.newBluetoothInputsNever },
-                    set: { appState.setNewBluetoothInputsNever($0) }
-                ))
-                .help("When enabled, newly discovered Bluetooth microphones start in Never mode so headset mics do not become default automatically.")
-            }
-
-            Section("System") {
-                SettingsHelpText("System options control notifications, alert routing, and whether Audiyo starts automatically after login.")
-                Toggle("Notifications", isOn: Binding(
-                    get: { appState.config.notificationsEnabled },
-                    set: { appState.setNotificationsEnabled($0) }
-                ))
-                .help("Allow Audiyo to notify you when it changes audio routing or needs attention.")
-
-                Picker("Alert device", selection: Binding(
-                    get: { appState.config.alertOutputUID ?? "" },
-                    set: { appState.setAlertOutput(uid: $0.isEmpty ? nil : $0) }
-                )) {
-                    Text("Follow output").tag("")
-                    ForEach(outputs) { output in
-                        Text(output.name).tag(output.uid)
-                    }
-                }
-                .help("Choose where macOS system alerts play. Follow output keeps alerts aligned with the main output device.")
-
-                Toggle("Launch at Login", isOn: Binding(
-                    get: { appState.launchAtLoginStatus == .enabled },
-                    set: { appState.setLaunchAtLoginEnabled($0) }
-                ))
-                .disabled(!appState.launchAtLoginStatus.isAvailable)
-                .help("Start Audiyo automatically as a menu-bar utility when you log in. This is available after installing Audiyo in /Applications.")
-
-                launchAtLoginMessage
-            }
-
-            Section("Visibility") {
-                SettingsHelpText("Choose where Audiyo appears. Audiyo keeps at least one control surface visible so you can get back to Settings.")
-
-                Toggle("Show menu-bar icon", isOn: Binding(
-                    get: { appState.menuBarIconVisible },
-                    set: { appState.setMenuBarIconVisible($0) }
-                ))
-                .help("Show Audiyo in the top-right macOS menu bar. If you turn this off while the Dock icon is hidden, Audiyo turns the Dock icon on.")
-
-                Toggle("Show Dock icon", isOn: Binding(
-                    get: { appState.dockIconVisible },
-                    set: { appState.setDockIconVisible($0) }
-                ))
-                .help("Show Audiyo as a normal macOS app in the Dock and app switcher. If you turn this off while the menu-bar icon is hidden, Audiyo turns the menu-bar icon on.")
-            }
-        }
-        .formStyle(.grouped)
-    }
-
-    @ViewBuilder
-    private var launchAtLoginMessage: some View {
-        if case .requiresApproval = appState.launchAtLoginStatus {
-            Text("Approve Audiyo in System Settings to finish enabling launch at login.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        if case .unavailable(let message) = appState.launchAtLoginStatus {
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
-
-private struct SupportTab: View {
-    @Environment(AppState.self) private var appState
-
-    var body: some View {
-        Form {
-            Section("Audiyo") {
-                SettingsHelpText("Use this information when checking which build is installed or when sharing diagnostics.")
-                LabeledContent("Version", value: "\(appState.appVersion) (\(appState.buildNumber))")
-                    .help("The marketing version and build number from the app bundle.")
-                LabeledContent("Endpoints", value: "\(appState.endpoints.count)")
-                    .help("The number of CoreAudio input and output endpoints Audiyo can currently see.")
-                LabeledContent("Recent switches", value: "\(appState.recentSwitches.count)")
-                    .help("How many recent routing changes Audiyo has recorded in this session.")
-            }
-
-            Section("Diagnostics") {
-                SettingsHelpText("Diagnostics are saved only when you export them. They include app state, device summaries, recent switches, and the last error.")
-                Button {
-                    appState.exportDiagnostics()
-                } label: {
-                    Label("Export Diagnostics...", systemImage: "square.and.arrow.down")
-                }
-                .help("Save a text report you can inspect or share when troubleshooting.")
-            }
-        }
-        .formStyle(.grouped)
+        return appState.endpoints.first { $0.uid == uid && $0.direction == direction }?.name
+            ?? appState.config.knownDevice(uid: uid, direction: direction)?.name
+            ?? "Unavailable device"
     }
 }
 
@@ -357,30 +447,6 @@ private struct SettingsHelpText: View {
         Text(text)
             .font(.caption)
             .foregroundStyle(.secondary)
-    }
-}
-
-private struct SettingsCallout: View {
-    let systemImage: String
-    let title: String
-    let message: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(10)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
-        .help(message)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

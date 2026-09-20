@@ -11,7 +11,7 @@ struct AudiyoApp: App {
         )) {
             MenuView()
                 .environment(appState)
-                .frame(width: 340)
+                .frame(width: 380)
         } label: {
             Label("Audiyo", systemImage: appState.hasHFPWarning ? "waveform.badge.exclamationmark" : "speaker.wave.2")
         }

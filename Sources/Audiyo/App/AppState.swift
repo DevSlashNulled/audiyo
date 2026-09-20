@@ -32,6 +32,7 @@ final class AppState {
     var outputVolumeEnabled = false
     var outputMuteEnabled = false
     var launchAtLoginStatus: LaunchAtLoginStatus
+    var settingsTab: SettingsTab = .priorities
 
     var hasHFPWarning: Bool {
         badgeState == .hfpWarning
@@ -39,6 +40,10 @@ final class AppState {
 
     var masterAuto: Bool {
         config.masterAutoEnabled
+    }
+
+    var hasManualSelection: Bool {
+        overrides != ActiveOverrides()
     }
 
     var menuBarIconVisible: Bool {
@@ -101,8 +106,17 @@ final class AppState {
         reconcileNow()
     }
 
+    func resumePriorities() {
+        overrides = ActiveOverrides()
+        setAutoEnabled(true)
+    }
+
     func setAlertOutput(uid: String?) {
         config.alertOutputUID = uid
+        if let uid, var device = config.knownDevice(uid: uid, direction: .output) {
+            device.isUserConfigured = true
+            config.upsert(device, direction: .output)
+        }
         persistConfig()
         reconcileNow()
     }
@@ -110,13 +124,8 @@ final class AppState {
     func setMode(_ mode: DeviceMode, for endpoint: Endpoint) {
         var device = config.knownDevice(uid: endpoint.uid, direction: endpoint.direction) ?? PriorityDevice(uid: endpoint.uid, name: endpoint.name, transport: endpoint.transport)
         device.mode = mode
+        device.isUserConfigured = true
         config.upsert(device, direction: endpoint.direction)
-        persistConfig()
-        reconcileNow()
-    }
-
-    func setKnownDevice(_ device: PriorityDevice, direction: AudioDirection) {
-        config.upsert(device, direction: direction)
         persistConfig()
         reconcileNow()
     }
@@ -131,8 +140,14 @@ final class AppState {
         }
     }
 
-    func setNewBluetoothInputsNever(_ enabled: Bool) {
-        config.newBluetoothInputsNever = enabled
+    func addToPriority(_ device: PriorityDevice, direction: AudioDirection) {
+        config.addToPriority(uid: device.uid, direction: direction)
+        persistConfig()
+        reconcileNow()
+    }
+
+    func removeFromPriority(_ device: PriorityDevice, direction: AudioDirection) {
+        config.removeFromPriority(uid: device.uid, direction: direction)
         persistConfig()
         reconcileNow()
     }
@@ -224,13 +239,22 @@ final class AppState {
 
     func movePriority(direction: AudioDirection, from source: IndexSet, to destination: Int) {
         var priority = config.priority(for: direction)
+        guard source.allSatisfy({ priority.indices.contains($0) }), (0...priority.count).contains(destination) else { return }
+        let movedUIDs = source.map { priority[$0] }
         priority.move(fromOffsets: source, toOffset: destination)
         config.setPriority(priority, for: direction)
+        for uid in movedUIDs {
+            if var device = config.knownDevice(uid: uid, direction: direction) {
+                device.isUserConfigured = true
+                config.upsert(device, direction: direction)
+            }
+        }
         persistConfig()
         reconcileNow()
     }
 
     func forget(_ device: PriorityDevice, direction: AudioDirection) {
+        guard !endpoints.contains(where: { $0.uid == device.uid && $0.direction == direction }) else { return }
         config.remove(uid: device.uid, direction: direction)
         persistConfig()
         reconcileNow()
@@ -270,11 +294,6 @@ final class AppState {
             snapshot: snapshot,
             config: config,
             overrides: overrides,
-            policies: EnginePolicies(
-                newBluetoothInputMode: config.newBluetoothInputsNever ? .never : .automatic,
-                newInputMode: .automatic,
-                newOutputMode: .automatic
-            ),
             masterAuto: masterAuto,
             suspendedDefaults: guardState.suspendedDefaults(at: Date())
         )
