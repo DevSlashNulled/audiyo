@@ -10,9 +10,14 @@ final class AudioHAL {
     private var isStarted = false
     private var observedDeviceIDs: Set<AudioDeviceID> = []
     private var pendingDefaultSets = HALDefaultSetLedger()
+    private var refreshTimer: DispatchSourceTimer?
 
     var onSnapshot: (@Sendable (HALSnapshot) -> Void)?
     var onVolumeChange: (@Sendable () -> Void)?
+
+    deinit {
+        refreshTimer?.cancel()
+    }
 
     func start() {
         queue.async {
@@ -20,6 +25,13 @@ final class AudioHAL {
             self.isStarted = true
             self.registerSystemListeners()
             self.emitSnapshot()
+            let timer = DispatchSource.makeTimerSource(queue: self.queue)
+            timer.schedule(deadline: .now() + 60 * 60, repeating: 60 * 60, leeway: .seconds(60))
+            timer.setEventHandler { [weak self] in
+                self?.emitSnapshot()
+            }
+            self.refreshTimer = timer
+            timer.resume()
         }
     }
 
