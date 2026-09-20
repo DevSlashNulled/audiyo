@@ -79,54 +79,74 @@ private struct PriorityPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Switch to these devices, in this order")
-                        .font(.headline)
-                    Spacer()
-                    Text("Drag to reorder")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text("Use #1 if connected, otherwise #2, and so on. Switch back when a higher choice reconnects.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            List {
-                if preferredDevices.isEmpty {
-                    VStack(spacing: 6) {
-                        Text("Your list is empty")
+            if !showsOtherDevices {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Switch to these devices, in this order")
                             .font(.headline)
-                        Text("Expand Other devices below, then add devices in the order you want to use them.")
+                        Spacer()
+                        Text("Drag to reorder")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(16)
+                    Text("Use #1 if connected, otherwise #2, and so on. Switch back when a higher choice reconnects.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                ForEach(Array(preferredDevices.enumerated()), id: \.element.id) { entry in
-                    deviceRow(entry.element, position: entry.offset + 1)
+                List {
+                    if preferredDevices.isEmpty {
+                        VStack(spacing: 6) {
+                            Text("Your list is empty")
+                                .font(.headline)
+                            Text("Expand Other devices below, then add devices in the order you want to use them.")
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(16)
+                    }
+
+                    ForEach(Array(preferredDevices.enumerated()), id: \.element.id) { entry in
+                        deviceRow(entry.element, position: entry.offset + 1)
+                    }
+                    .onMove { source, destination in
+                        appState.movePriority(direction: direction, from: source, to: destination)
+                    }
                 }
-                .onMove { source, destination in
-                    appState.movePriority(direction: direction, from: source, to: destination)
+                .listStyle(.inset)
+                .frame(minHeight: 110)
+                .scrollIndicators(.visible)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.quaternary, lineWidth: 1)
+                        .allowsHitTesting(false)
                 }
-            }
-            .listStyle(.inset)
-            .frame(minHeight: 110)
-            .scrollIndicators(.visible)
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(.quaternary, lineWidth: 1)
-                    .allowsHitTesting(false)
+
+                if !preferredDevices.isEmpty && !hasConnectedPreference {
+                    SettingsHelpText("None of the devices in your list are connected.")
+                }
             }
 
-            if !preferredDevices.isEmpty && !hasConnectedPreference {
-                SettingsHelpText("None of the devices in your list are connected.")
+            Button {
+                showsOtherDevices.toggle()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(showsOtherDevices ? 90 : 0))
+                        .frame(width: 8)
+                        .accessibilityHidden(true)
+                    Text("Other devices (\(otherDevices.count))")
+                        .font(.headline)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsOtherDevices ? "Expanded" : "Collapsed")
 
-            DisclosureGroup(isExpanded: $showsOtherDevices) {
+            if showsOtherDevices {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("New devices appear here. Add them to your list, or choose a connected device for now from the menu bar.")
                         .font(.caption)
@@ -145,7 +165,7 @@ private struct PriorityPane: View {
                         }
                     }
                     .listStyle(.inset)
-                    .frame(height: otherDevices.isEmpty ? 52 : min(132, CGFloat(otherDevices.count) * 64))
+                    .frame(minHeight: 110, maxHeight: .infinity)
                     .scrollIndicators(.visible)
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
@@ -154,24 +174,6 @@ private struct PriorityPane: View {
                     }
                 }
                 .padding(.top, 6)
-            } label: {
-                Button {
-                    showsOtherDevices.toggle()
-                } label: {
-                    HStack {
-                        Text("Other devices (\(otherDevices.count))")
-                            .font(.headline)
-                        Spacer()
-                        if showsOtherDevices && otherDevices.count > 2 {
-                            Text("Scroll for more")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityValue(showsOtherDevices ? "Expanded" : "Collapsed")
             }
         }
     }
