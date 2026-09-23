@@ -1,6 +1,16 @@
 import SwiftUI
 
 @main
+enum AudiyoMain {
+    static func main() {
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            TestHostApp.main()
+        } else {
+            AudiyoApp.main()
+        }
+    }
+}
+
 struct AudiyoApp: App {
     @State private var appState = AppState()
 
@@ -20,6 +30,14 @@ struct AudiyoApp: App {
         Settings {
             SettingsView()
                 .environment(appState)
+        }
+    }
+}
+
+private struct TestHostApp: App {
+    var body: some Scene {
+        Settings {
+            EmptyView()
         }
     }
 }
