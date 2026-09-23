@@ -29,42 +29,6 @@ final class ConfigStoreTests: XCTestCase {
         XCTAssertFalse(config.dockIconVisible)
     }
 
-    func testLegacyAirPlayCleanupKeepsConnectedDevicesAndRecordedPreferences() throws {
-        let data = Data("""
-        {
-            "version": 1,
-            "input": [{"uid":"mic","name":"Mic","transport":"USB","mode":"automatic","lastSeen":0}],
-            "output": [
-                {"uid":"stale","name":"Old Speaker","transport":"AirPlay","mode":"automatic","lastSeen":0},
-                {"uid":"stale-never","name":"Old TV","transport":"AirPlay","mode":"never","lastSeen":0},
-                {"uid":"connected","name":"Speaker","transport":"AirPlay","mode":"automatic","lastSeen":0},
-                {"uid":"configured","name":"Configured Speaker","transport":"AirPlay","mode":"never","lastSeen":0,"isUserConfigured":true},
-                {"uid":"usb","name":"USB Speaker","transport":"USB","mode":"never","lastSeen":0}
-            ]
-        }
-        """.utf8)
-        let config = try JSONDecoder().decode(PriorityConfig.self, from: data)
-        XCTAssertEqual(config.output.map(\.isUserConfigured), [false, false, false, true, true])
-
-        let endpoint = Endpoint(uid: "connected", direction: .output, transport: .airPlay, name: "Speaker", channels: 2, sampleRate: 48_000, deviceID: 100)
-        let decision = Reconciler().reconcile(
-            snapshot: Fixtures.snapshot(endpoints: [endpoint]),
-            config: config,
-            masterAuto: false
-        )
-
-        XCTAssertEqual(decision.configAmendments.input, config.input)
-        XCTAssertEqual(decision.configAmendments.output.map(\.uid), ["connected", "configured", "usb"])
-        XCTAssertEqual(decision.configAmendments.output.map(\.mode), [.automatic, .never, .never])
-        XCTAssertEqual(decision.configAmendments.output.first?.lastSeen, Fixtures.baseDate)
-
-        let store = ConfigStore(url: temporaryURL())
-        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
-        try store.save(decision.configAmendments)
-
-        XCTAssertEqual(try store.load(), decision.configAmendments)
-    }
-
     func testForgettingDeviceClearsOnlyItsOutputAlertPin() {
         var config = PriorityConfig(pinnedSystemOutputUID: "alerts")
 

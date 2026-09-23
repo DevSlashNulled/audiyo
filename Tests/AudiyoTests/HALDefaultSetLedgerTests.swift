@@ -21,7 +21,7 @@ final class HALDefaultSetLedgerTests: XCTestCase {
         var ledger = HALDefaultSetLedger()
         let now = Date()
 
-        ledger.record(selector: .output, deviceID: 7, now: now)
+        _ = ledger.record(selector: .output, deviceID: 7, now: now)
 
         XCTAssertNil(ledger.consume(selector: .systemOutput, deviceID: 7, now: now))
         XCTAssertNil(ledger.consume(selector: .output, deviceID: 8, now: now))
@@ -45,8 +45,8 @@ final class HALDefaultSetLedgerTests: XCTestCase {
         var ledger = HALDefaultSetLedger(ttl: 1)
         let now = Date()
 
-        ledger.record(selector: .input, deviceID: 1, now: now)
-        ledger.record(selector: .output, deviceID: 2, now: now.addingTimeInterval(0.5))
+        _ = ledger.record(selector: .input, deviceID: 1, now: now)
+        _ = ledger.record(selector: .output, deviceID: 2, now: now.addingTimeInterval(0.5))
         ledger.expire(now: now.addingTimeInterval(1.25))
 
         XCTAssertNil(ledger.consume(selector: .input, deviceID: 1, now: now.addingTimeInterval(1.25)))

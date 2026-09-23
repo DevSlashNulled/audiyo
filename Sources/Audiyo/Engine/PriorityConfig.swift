@@ -5,8 +5,6 @@ enum PriorityMode: String, Codable, Equatable, CaseIterable {
     case never
 }
 
-typealias DeviceMode = PriorityMode
-
 struct PriorityDevice: Codable, Equatable, Identifiable {
     var id: String { uid }
 
@@ -37,8 +35,7 @@ struct PriorityDevice: Codable, Equatable, Identifiable {
         transport = try container.decode(TransportKind.self, forKey: .transport)
         mode = try container.decode(PriorityMode.self, forKey: .mode)
         lastSeen = try container.decodeIfPresent(Date.self, forKey: .lastSeen)
-        // Let legacy AirPlay history expire; preserve other existing priorities.
-        isUserConfigured = try container.decodeIfPresent(Bool.self, forKey: .isUserConfigured) ?? (transport != .airPlay)
+        isUserConfigured = try container.decodeIfPresent(Bool.self, forKey: .isUserConfigured) ?? false
     }
 }
 
@@ -218,20 +215,9 @@ extension DefaultSelector {
 struct ActiveOverrides: Equatable {
     var inputUID: String?
     var outputUID: String?
-    var systemOutputUID: String?
 
-    init(inputUID: String? = nil, outputUID: String? = nil, systemOutputUID: String? = nil) {
+    init(inputUID: String? = nil, outputUID: String? = nil) {
         self.inputUID = inputUID
         self.outputUID = outputUID
-        self.systemOutputUID = systemOutputUID
-    }
-
-    func uid(for direction: AudioDirection) -> String? {
-        switch direction {
-        case .input:
-            return inputUID
-        case .output:
-            return outputUID
-        }
     }
 }

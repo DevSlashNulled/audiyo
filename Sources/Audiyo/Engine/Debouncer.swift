@@ -16,9 +16,4 @@ final class Debouncer {
         pendingWorkItem = item
         queue.asyncAfter(deadline: .now() + interval, execute: item)
     }
-
-    func cancel() {
-        pendingWorkItem?.cancel()
-        pendingWorkItem = nil
-    }
 }

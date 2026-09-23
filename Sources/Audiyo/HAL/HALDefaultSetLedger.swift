@@ -5,17 +5,6 @@ enum HALDefaultSelector: Equatable, Hashable {
     case input
     case output
     case systemOutput
-
-    var coreAudioSelector: AudioObjectPropertySelector {
-        switch self {
-        case .input:
-            return kAudioHardwarePropertyDefaultInputDevice
-        case .output:
-            return kAudioHardwarePropertyDefaultOutputDevice
-        case .systemOutput:
-            return kAudioHardwarePropertyDefaultSystemOutputDevice
-        }
-    }
 }
 
 struct HALPendingDefaultSet: Equatable {

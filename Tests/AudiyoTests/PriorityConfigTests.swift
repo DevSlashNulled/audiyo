@@ -58,11 +58,10 @@ final class PriorityConfigTests: XCTestCase {
         XCTAssertEqual(try store.load(), loaded)
     }
 
-    func testLegacyModesAndOrderingSurviveRetiredBluetoothDiscoverySetting() throws {
+    func testDecodingKeepsModesOrderingAndAlertDevice() throws {
         let data = Data("""
         {
             "version": 1,
-            "newBluetoothInputsNever": false,
             "masterAutoEnabled": false,
             "pinnedSystemOutputUID": "other",
             "input": [

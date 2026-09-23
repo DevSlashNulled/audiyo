@@ -64,7 +64,6 @@ struct Reconciler {
             snapshot: snapshot,
             config: amendedConfig,
             outputWillChangeTo: desiredOutput?.uid,
-            overrideUID: overrides.systemOutputUID,
             suspendedUntil: suspendedDefaults[.output],
             now: snapshot.createdAt
         )
@@ -108,14 +107,12 @@ struct Reconciler {
         snapshot: HALSnapshot,
         config: PriorityConfig,
         outputWillChangeTo: String?,
-        overrideUID: String?,
         suspendedUntil: Date?,
         now: Date
     ) -> String? {
         guard suspendedUntil.map({ $0 > now }) != true else { return nil }
         let connectedOutputs = Set(snapshot.endpoints.filter { $0.direction == .output }.map(\.uid))
-        let desiredUID = overrideUID ?? config.pinnedSystemOutputUID
-        guard let desiredUID, connectedOutputs.contains(desiredUID) else { return nil }
+        guard let desiredUID = config.pinnedSystemOutputUID, connectedOutputs.contains(desiredUID) else { return nil }
 
         if desiredUID != snapshot.defaultSystemOutputUID {
             return desiredUID

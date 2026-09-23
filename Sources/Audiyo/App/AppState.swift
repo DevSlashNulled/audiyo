@@ -121,15 +121,6 @@ final class AppState {
         reconcileNow()
     }
 
-    func setMode(_ mode: DeviceMode, for endpoint: Endpoint) {
-        var device = config.knownDevice(uid: endpoint.uid, direction: endpoint.direction) ?? PriorityDevice(uid: endpoint.uid, name: endpoint.name, transport: endpoint.transport)
-        device.mode = mode
-        device.isUserConfigured = true
-        config.upsert(device, direction: endpoint.direction)
-        persistConfig()
-        reconcileNow()
-    }
-
     func setNotificationsEnabled(_ enabled: Bool) {
         config.notificationsEnabled = enabled
         persistConfig()
@@ -347,7 +338,7 @@ final class AppState {
 
     private func recordSwitch(selector: DefaultSelector, uid: String, reason: String) {
         let name = endpoints.first { $0.uid == uid && $0.direction == selector.direction }?.name ?? uid
-        recentSwitches.insert(SwitchRecord(date: Date(), selector: selector, uid: uid, name: name, reason: reason), at: 0)
+        recentSwitches.insert(SwitchRecord(date: Date(), selector: selector, name: name, reason: reason), at: 0)
         recentSwitches = Array(recentSwitches.prefix(10))
 
         guard config.notificationsEnabled else { return }
@@ -392,7 +383,6 @@ struct SwitchRecord: Identifiable, Equatable {
     let id = UUID()
     var date: Date
     var selector: DefaultSelector
-    var uid: String
     var name: String
     var reason: String
 }
