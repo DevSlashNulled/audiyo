@@ -28,7 +28,7 @@ struct SettingsView: View {
     }
 }
 
-private struct DevicesTab: View {
+struct DevicesTab: View {
     @State private var direction: AudioDirection = .output
 
     var body: some View {

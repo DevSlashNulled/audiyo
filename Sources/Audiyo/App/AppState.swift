@@ -72,7 +72,7 @@ final class AppState {
             : "Running from development build"
     }
 
-    init(hal: AudioHAL = AudioHAL(), configStore: ConfigStore = .live, notifier: any Notifying = Notifier(), launchAtLogin: any LaunchAtLoginManaging = LaunchAtLogin()) {
+    init(hal: AudioHAL = AudioHAL(), configStore: ConfigStore = .live, notifier: any Notifying = Notifier(), launchAtLogin: any LaunchAtLoginManaging = LaunchAtLogin(), startHAL: Bool = true) {
         self.hal = hal
         self.configStore = configStore
         self.notifier = notifier
@@ -92,7 +92,9 @@ final class AppState {
                 self.refreshOutputVolume()
             }
         }
-        self.hal.start()
+        if startHAL {
+            self.hal.start()
+        }
         applyActivationPolicy()
     }
 
