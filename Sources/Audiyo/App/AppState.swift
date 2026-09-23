@@ -6,7 +6,7 @@ import os
 @MainActor
 @Observable
 final class AppState {
-    private let logger = Logger(subsystem: "ca.5350.audiyo", category: "app")
+    private let logger = Logger(subsystem: "local.audiyo.app", category: "app")
     private let hal: AudioHAL
     private let configStore: ConfigStore
     private let notifier: any Notifying

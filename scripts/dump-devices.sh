@@ -5,4 +5,4 @@ system_profiler SPAudioDataType
 
 echo
 echo "Audiyo logs:"
-log show --style compact --last 5m --predicate 'subsystem == "ca.5350.audiyo"'
+log show --style compact --last 5m --predicate 'subsystem == "local.audiyo.app"'

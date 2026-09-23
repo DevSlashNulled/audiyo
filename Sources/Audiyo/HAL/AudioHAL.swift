@@ -6,7 +6,7 @@ import os
 private let audioControlElements: [AudioObjectPropertyElement] = [kAudioObjectPropertyElementMain, 1]
 
 final class AudioHAL {
-    private let queue = DispatchQueue(label: "ca.5350.audiyo.hal")
+    private let queue = DispatchQueue(label: "local.audiyo.app.hal")
     private var isStarted = false
     private var observedDeviceIDs: Set<AudioDeviceID> = []
     private var pendingDefaultSets = HALDefaultSetLedger()

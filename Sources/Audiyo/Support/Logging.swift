@@ -1,5 +1,5 @@
 import os
 
 extension Logger {
-    static let hal = Logger(subsystem: "ca.5350.audiyo", category: "hal")
+    static let hal = Logger(subsystem: "local.audiyo.app", category: "hal")
 }

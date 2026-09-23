@@ -1,6 +1,5 @@
 name: Audiyo
 options:
-  bundleIdPrefix: ca.5350
   deploymentTarget:
     macOS: "15.0"
 settings:
@@ -18,14 +17,14 @@ targets:
       - Sources/Audiyo
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ca.5350.audiyo
+        PRODUCT_BUNDLE_IDENTIFIER: local.audiyo.app
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Audiyo
         INFOPLIST_KEY_CFBundleName: Audiyo
         INFOPLIST_KEY_CFBundleShortVersionString: "$(MARKETING_VERSION)"
         INFOPLIST_KEY_CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         INFOPLIST_KEY_LSUIElement: YES
-        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Audiyo"
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Copyright © 2026 Eli"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   AudiyoTests:
     type: bundle.unit-test
@@ -36,5 +35,5 @@ targets:
       - target: Audiyo
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: ca.5350.audiyo.tests
+        PRODUCT_BUNDLE_IDENTIFIER: local.audiyo.app.tests
         GENERATE_INFOPLIST_FILE: YES
