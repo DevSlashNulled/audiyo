@@ -5,25 +5,37 @@ struct MenuView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openSettings) private var openSettings
 
-    private var outputs: [Endpoint] { connectedDevices(for: .output) }
-    private var inputs: [Endpoint] { connectedDevices(for: .input) }
+    private var outputs: [Endpoint] {
+        appState.config.connectedPriorityEndpoints(for: .output, in: appState.endpoints)
+    }
+    private var inputs: [Endpoint] {
+        appState.config.connectedPriorityEndpoints(for: .input, in: appState.endpoints)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Audiyo", systemImage: "speaker.wave.2")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("Audiyo", systemImage: "speaker.wave.2")
+                    .font(.headline)
+                Spacer()
+                Text("Priority devices")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             AutomaticSwitchingView()
+                .controlSize(.small)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
                 DeviceSection(
                     title: "Sound output",
                     endpoints: outputs,
+                    hasPriorities: !appState.config.priority(for: .output).isEmpty,
                     defaultUID: appState.defaultOutputUID,
                     systemDefaultUID: appState.defaultSystemOutputUID,
-                    onSelect: select
+                    onSelect: appState.userSelect
                 )
 
                 if outputs.contains(where: { $0.uid == appState.defaultOutputUID }) {
@@ -42,15 +54,12 @@ struct MenuView: View {
                 DeviceSection(
                     title: "Microphone",
                     endpoints: inputs,
+                    hasPriorities: !appState.config.priority(for: .input).isEmpty,
                     defaultUID: appState.defaultInputUID,
                     systemDefaultUID: nil,
-                    onSelect: select
+                    onSelect: appState.userSelect
                 )
             }
-
-            Text("Choose a device for now. Set lasting preferences in Device priorities.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
 
             Divider()
 
@@ -61,6 +70,7 @@ struct MenuView: View {
                     openSettings()
                     dismiss()
                 }
+                .help("Choose which devices appear here and set their priority order.")
                 Spacer()
                 Button("Refresh") {
                     appState.refresh()
@@ -73,25 +83,8 @@ struct MenuView: View {
             }
             .buttonStyle(.borderless)
         }
-        .padding(14)
-    }
-
-    private func select(_ endpoint: Endpoint) {
-        appState.userSelect(endpoint)
-        dismiss()
-    }
-
-    private func connectedDevices(for direction: AudioDirection) -> [Endpoint] {
-        let priority = appState.config.priority(for: direction)
-        let currentUID = direction == .input ? appState.defaultInputUID : appState.defaultOutputUID
-        return appState.endpoints.filter { $0.direction == direction }.sorted {
-            if ($0.uid == currentUID) != ($1.uid == currentUID) {
-                return $0.uid == currentUID
-            }
-            let first = priority.firstIndex(of: $0.uid) ?? Int.max
-            let second = priority.firstIndex(of: $1.uid) ?? Int.max
-            return first == second ? $0 < $1 : first < second
-        }
+        .padding(12)
+        .frame(width: 420)
     }
 }
 
@@ -169,17 +162,18 @@ struct AutomaticSwitchingView: View {
 private struct DeviceSection: View {
     let title: String
     let endpoints: [Endpoint]
+    let hasPriorities: Bool
     let defaultUID: String?
     let systemDefaultUID: String?
     let onSelect: (Endpoint) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                if endpoints.count > 3 {
+                if endpoints.count > 6 {
                     Text("\(endpoints.count) devices · Scroll for more")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -187,15 +181,19 @@ private struct DeviceSection: View {
             }
 
             if endpoints.isEmpty {
-                Text("No devices available. Connect a device, then choose Refresh.")
+                Text(hasPriorities
+                     ? "None of your priority devices are connected."
+                     : "Add devices in Device priorities to show them here.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if endpoints.count > 3 {
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 4)
+            } else if endpoints.count > 6 {
                 ScrollView {
                     deviceRows
                         .padding(.trailing, 8)
                 }
-                .frame(height: 148)
+                .frame(height: 178)
                 .scrollIndicators(.visible)
             } else {
                 deviceRows
@@ -204,7 +202,7 @@ private struct DeviceSection: View {
     }
 
     private var deviceRows: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 2) {
             ForEach(endpoints) { endpoint in
                 DeviceRow(
                     endpoint: endpoint,

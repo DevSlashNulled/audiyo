@@ -15,7 +15,6 @@ final class ScreenshotTests: XCTestCase {
 
         let menu = MenuView()
             .environment(appState)
-            .frame(width: 380)
             .background(Color(nsColor: .windowBackgroundColor))
             .clipShape(RoundedRectangle(cornerRadius: 12))
         try await capture(menu, name: "menu", directory: directory)
@@ -26,6 +25,50 @@ final class ScreenshotTests: XCTestCase {
             .frame(width: 760, height: 460)
             .background(Color(nsColor: .windowBackgroundColor))
         try await capture(priorities, name: "priorities", directory: directory, titled: "Device priorities")
+    }
+
+    func testCaptureMenuStates() async throws {
+        guard let path = ProcessInfo.processInfo.environment["AUDIYO_CAPTURE_DIR"] else {
+            throw XCTSkip("Set AUDIYO_CAPTURE_DIR to capture menu states.")
+        }
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let appState = try makeAppState()
+        let menu = MenuView()
+            .environment(appState)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+        let savedConfig = appState.config
+        appState.config = PriorityConfig()
+        try await capture(menu, name: "menu-empty", directory: directory)
+
+        appState.config = savedConfig
+        appState.endpoints = []
+        try await capture(menu, name: "menu-offline", directory: directory)
+
+        appState.config = PriorityConfig()
+        for direction in AudioDirection.allCases {
+            for index in 1...8 {
+                let endpoint = Endpoint(
+                    uid: "\(direction.rawValue)-interface-\(index)",
+                    direction: direction,
+                    transport: .usb,
+                    name: "Focusrite Scarlett 18i20 USB Audio Interface",
+                    channels: 2,
+                    sampleRate: 48_000,
+                    deviceID: UInt32(index)
+                )
+                appState.endpoints.append(endpoint)
+                appState.config.upsert(
+                    PriorityDevice(uid: endpoint.uid, name: endpoint.name, transport: endpoint.transport),
+                    direction: direction
+                )
+            }
+        }
+        appState.defaultOutputUID = "output-interface-2"
+        appState.defaultInputUID = "input-interface-2"
+        try await capture(menu, name: "menu-many", directory: directory)
     }
 
     private func makeAppState() throws -> AppState {

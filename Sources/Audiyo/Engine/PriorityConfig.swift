@@ -101,6 +101,12 @@ struct PriorityConfig: Codable, Equatable {
         preferredDevices(for: direction).map(\.uid)
     }
 
+    func connectedPriorityEndpoints(for direction: AudioDirection, in endpoints: [Endpoint]) -> [Endpoint] {
+        priority(for: direction).compactMap { uid in
+            endpoints.first { $0.uid == uid && $0.direction == direction }
+        }
+    }
+
     mutating func addToPriority(uid: String, direction: AudioDirection) {
         guard var device = knownDevice(uid: uid, direction: direction), device.mode != .automatic else { return }
         let order = priority(for: direction) + [uid]

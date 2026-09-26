@@ -4,7 +4,7 @@ A small macOS menu bar app that keeps your sound output and microphone on the de
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/menu-dark.png">
-  <img src="docs/menu-light.png" alt="Audiyo menu listing sound output and microphone devices with a volume slider" width="380">
+  <img src="docs/menu-light.png" alt="Audiyo menu listing priority sound output and microphone devices with a volume slider" width="420">
 </picture>
 
 macOS switches to whichever audio device connected most recently. Plug in a monitor and your sound moves to its speakers. Connect a Bluetooth headset and it takes over your microphone too. Audiyo keeps a numbered list of devices for sound output and another for your microphone. It uses the highest one that's connected and switches back when a higher choice reconnects.
@@ -12,7 +12,7 @@ macOS switches to whichever audio device connected most recently. Plug in a moni
 ## Features
 
 - Separate priority lists for **Sound output** and **Microphone**.
-- Pick any connected device from the menu bar for a while, then choose **Use my list again** to go back to your order.
+- Quickly switch between connected devices in your priority lists from the menu bar, then choose **Use my list again** to go back to your order.
 - Send system sounds, like alerts, to a device of your choice.
 - Output volume and mute right in the menu.
 - Optional notifications whenever Audiyo switches a device.
@@ -55,6 +55,7 @@ Do the same for the other list. Audiyo starts following your order right away.
 - Audiyo uses the first device in your list that's connected. When a higher device reconnects, it switches back.
 - If nothing in your list is connected, Audiyo leaves the current device alone.
 - Choosing a device from the menu bar overrides your list while that device is connected. It lasts until you choose **Use my list again** or quit Audiyo.
+- The menu shows only connected devices in your priority lists, in your saved order. It stays open while you switch devices or adjust volume.
 - Turn off **Automatic switching** in the menu to stop Audiyo from changing devices on its own. You can still pick devices from the menu bar.
 - Devices you haven't added, removed, reordered, or picked for system sounds are forgotten after 7 days offline. Everything else stays until you choose **Forget device**. Forgotten devices show up under **Other devices** again when they reconnect.
 

@@ -151,7 +151,7 @@ private struct PriorityPane: View {
 
             if showsOtherDevices {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("New devices appear here. Add them to your list, or choose a connected device for now from the menu bar.")
+                    Text("New devices appear here. Add them to your list to use them for automatic switching and show them in the menu bar.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -228,7 +228,7 @@ private struct PriorityPane: View {
                     appState.removeFromPriority(device, direction: direction)
                 }
                 .fixedSize()
-                .help("Move to Other devices. You can still choose this device from the menu bar.")
+                .help("Move to Other devices and hide from the menu bar.")
                 .accessibilityLabel("Remove \(device.name) from your priority list")
             } else {
                 Button("Add to list") {

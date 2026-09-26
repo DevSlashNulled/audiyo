@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct DeviceRow: View {
+    @State private var isHovered = false
+
     let endpoint: Endpoint
     let isDefault: Bool
     let isSystemDefault: Bool
@@ -13,34 +15,47 @@ struct DeviceRow: View {
         } label: {
             HStack(spacing: 8) {
                 TransportIcon(endpoint: endpoint, highlighted: isDefault)
+                    .font(.system(size: 13))
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(endpoint.name)
-                        .lineLimit(1)
+                Text(endpoint.name)
+                    .font(.body)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(detailText)
+                if showsIdentifier {
+                    Text("…\(endpoint.uid.suffix(8))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 0)
-
-                if isDefault {
-                    Label("In use", systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(Color.accentColor)
                         .fixedSize()
                 }
+
+                if isSystemDefault {
+                    Image(systemName: "bell")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .help("System sounds")
+                        .accessibilityHidden(true)
+                }
+
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 14)
+                    .opacity(isDefault ? 1 : 0)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 7)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(isDefault ? Color.accentColor.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8))
+            .frame(height: 28)
+            .background(
+                isDefault ? Color.accentColor.opacity(0.10) : isHovered ? Color.primary.opacity(0.06) : .clear,
+                in: RoundedRectangle(cornerRadius: 6)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("\(endpoint.name)\n\(endpoint.channels) channels · \(Int(endpoint.sampleRate)) Hz\n\(endpoint.uid)")
+        .onHover { isHovered = $0 }
+        .help("\(endpoint.name)\n\(detailText)\n\(endpoint.channels) channels · \(Int(endpoint.sampleRate)) Hz\n\(endpoint.uid)")
         .accessibilityLabel(endpoint.name)
         .accessibilityValue("\(isDefault ? "In use" : "Available"). \(detailText)")
         .accessibilityHint("Use this device for now. Choose Use my list again to return to your saved order.")

@@ -2,6 +2,70 @@ import XCTest
 @testable import Audiyo
 
 final class PriorityConfigTests: XCTestCase {
+    func testConnectedPrioritiesFollowSavedOrderAndExcludeOtherDevices() {
+        let first = Fixtures.builtInSpeaker
+        let second = Fixtures.accentumOutput
+        let alerts = Endpoint(uid: "alerts", direction: .output, transport: .usb, name: "Alerts", channels: 2, sampleRate: 48_000, deviceID: 100)
+        let unknown = Endpoint(uid: "unknown", direction: .output, transport: .hdmi, name: "Display", channels: 2, sampleRate: 48_000, deviceID: 101)
+        let config = PriorityConfig(output: [
+            PriorityDevice(uid: first.uid, name: first.name, transport: first.transport, isUserConfigured: true),
+            PriorityDevice(uid: alerts.uid, name: alerts.name, transport: alerts.transport, mode: .never, isUserConfigured: true),
+            PriorityDevice(uid: second.uid, name: second.name, transport: second.transport)
+        ], pinnedSystemOutputUID: alerts.uid)
+
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: [second, alerts, unknown, first]), [first, second])
+        XCTAssertTrue(PriorityConfig().connectedPriorityEndpoints(for: .output, in: [first, second]).isEmpty)
+    }
+
+    func testDisconnectedPrioritiesReturnToTheirSavedPositionWhenReconnected() {
+        let config = Fixtures.config
+
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: [Fixtures.builtInSpeaker]), [Fixtures.builtInSpeaker])
+        XCTAssertTrue(config.connectedPriorityEndpoints(for: .output, in: []).isEmpty)
+        XCTAssertEqual(
+            config.connectedPriorityEndpoints(for: .output, in: [Fixtures.builtInSpeaker, Fixtures.accentumOutput]),
+            [Fixtures.accentumOutput, Fixtures.builtInSpeaker]
+        )
+    }
+
+    func testConnectedPrioritiesMatchDirectionWhenDeviceUIDIsShared() {
+        let output = Fixtures.builtInSpeaker
+        let input = Endpoint(uid: output.uid, direction: .input, transport: .builtIn, name: "Microphone", channels: 1, sampleRate: 48_000, deviceID: output.deviceID)
+        let config = PriorityConfig(
+            input: [PriorityDevice(uid: input.uid, name: input.name, transport: input.transport)],
+            output: [PriorityDevice(uid: output.uid, name: output.name, transport: output.transport)]
+        )
+
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .input, in: [output, input]), [input])
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: [input, output]), [output])
+        XCTAssertTrue(config.connectedPriorityEndpoints(for: .output, in: [input]).isEmpty)
+        XCTAssertTrue(config.connectedPriorityEndpoints(for: .input, in: [output]).isEmpty)
+    }
+
+    func testConnectedPrioritiesReflectAddReorderAndRemoveChanges() {
+        let first = Fixtures.builtInSpeaker
+        let second = Fixtures.accentumOutput
+        let endpoints = [second, first]
+        var config = PriorityConfig(output: [
+            PriorityDevice(uid: first.uid, name: first.name, transport: first.transport),
+            PriorityDevice(uid: second.uid, name: second.name, transport: second.transport, mode: .never)
+        ])
+
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: endpoints), [first])
+
+        config.addToPriority(uid: second.uid, direction: .output)
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: endpoints), [first, second])
+
+        config.setPriority([second.uid, first.uid], for: .output)
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: endpoints), [second, first])
+
+        config.removeFromPriority(uid: first.uid, direction: .output)
+        XCTAssertEqual(config.connectedPriorityEndpoints(for: .output, in: endpoints), [second])
+
+        config.removeFromPriority(uid: second.uid, direction: .output)
+        XCTAssertTrue(config.connectedPriorityEndpoints(for: .output, in: endpoints).isEmpty)
+    }
+
     func testReorderingFilteredPrioritiesPreservesOtherDevicesAndTheirSettings() {
         let first = PriorityDevice(uid: "first", name: "First", transport: .usb, mode: .automatic, lastSeen: Fixtures.baseDate, isUserConfigured: true)
         let other = PriorityDevice(uid: "other", name: "Other", transport: .airPlay, mode: .never, lastSeen: Fixtures.baseDate)
