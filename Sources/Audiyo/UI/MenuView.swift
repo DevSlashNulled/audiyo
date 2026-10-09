@@ -113,7 +113,7 @@ struct AutomaticSwitchingView: View {
                 HStack {
                     Label("Temporary selection", systemImage: "hand.point.up.left")
                         .font(.caption)
-                        .help("Your menu-bar selection takes priority until you use your list again or quit Audiyo.")
+                        .help("Your menu-bar selection takes priority until you use your list again, quit Audiyo, or the device stays disconnected for a minute.")
                     Spacer()
                     Button("Use my list again") {
                         appState.resumePriorities()

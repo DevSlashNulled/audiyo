@@ -54,7 +54,7 @@ Do the same for the other list. Audiyo starts following your order right away.
 
 - Audiyo uses the first device in your list that's connected. When a higher device reconnects, it switches back.
 - If nothing in your list is connected, Audiyo leaves the current device alone.
-- Choosing a device from the menu bar overrides your list while that device is connected. It lasts until you choose **Use my list again** or quit Audiyo.
+- Choosing a device from the menu bar overrides your list while that device is connected. It lasts until you choose **Use my list again**, quit Audiyo, or the device stays disconnected for a minute.
 - The menu shows only connected devices in your priority lists, in your saved order. It stays open while you switch devices or adjust volume.
 - Turn off **Automatic switching** in the menu to stop Audiyo from changing devices on its own. You can still pick devices from the menu bar.
 - Devices you haven't added, removed, reordered, or picked for system sounds are forgotten after 7 days offline. Everything else stays until you choose **Forget device**. Forgotten devices show up under **Other devices** again when they reconnect.

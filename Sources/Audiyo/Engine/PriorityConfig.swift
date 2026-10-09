@@ -219,11 +219,41 @@ extension DefaultSelector {
 }
 
 struct ActiveOverrides: Equatable {
+    static let disconnectGracePeriod: TimeInterval = 60
+
     var inputUID: String?
     var outputUID: String?
+    private(set) var inputDisconnectedAt: Date?
+    private(set) var outputDisconnectedAt: Date?
 
     init(inputUID: String? = nil, outputUID: String? = nil) {
         self.inputUID = inputUID
         self.outputUID = outputUID
+    }
+
+    /// Clears selections whose device has been disconnected for the grace period.
+    /// Returns when the next still-pending selection would expire.
+    mutating func expire(connected endpoints: [Endpoint], now: Date) -> Date? {
+        let inputDeadline = Self.expire(uid: &inputUID, disconnectedAt: &inputDisconnectedAt, direction: .input, endpoints: endpoints, now: now)
+        let outputDeadline = Self.expire(uid: &outputUID, disconnectedAt: &outputDisconnectedAt, direction: .output, endpoints: endpoints, now: now)
+        return [inputDeadline, outputDeadline].compactMap { $0 }.min()
+    }
+
+    private static func expire(uid: inout String?, disconnectedAt: inout Date?, direction: AudioDirection, endpoints: [Endpoint], now: Date) -> Date? {
+        guard let selectedUID = uid,
+              !endpoints.contains(where: { $0.uid == selectedUID && $0.direction == direction }) else {
+            disconnectedAt = nil
+            return nil
+        }
+
+        let since = disconnectedAt ?? now
+        let deadline = since.addingTimeInterval(disconnectGracePeriod)
+        guard deadline > now else {
+            uid = nil
+            disconnectedAt = nil
+            return nil
+        }
+        disconnectedAt = since
+        return deadline
     }
 }

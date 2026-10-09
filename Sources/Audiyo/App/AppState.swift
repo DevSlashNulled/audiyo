@@ -14,6 +14,7 @@ final class AppState {
     private let debouncer = Debouncer()
     private var guardState = EnforcementGuard()
     private var overrides = ActiveOverrides()
+    private var overrideExpiryTask: Task<Void, Never>?
     private var pendingSnapshot: HALSnapshot?
     private var applyingSelectors: Set<DefaultSelector> = []
     private var isEditingOutputVolume = false
@@ -261,6 +262,7 @@ final class AppState {
         }
         let selector: DefaultSelector = endpoint.direction == .input ? .input : .output
         applyDefault(uid: endpoint.uid, selector: selector, reason: "manual")
+        expireOverrides()
     }
 
     private func apply(_ snapshot: HALSnapshot) {
@@ -271,6 +273,9 @@ final class AppState {
         lastRefresh = snapshot.createdAt
         lastError = snapshot.error
         refreshOutputVolume()
+        if snapshot.error == nil {
+            expireOverrides()
+        }
 
         logger.info("snapshot endpoints=\(snapshot.endpoints.count) defaultInput=\(snapshot.defaultInputUID ?? "nil") defaultOutput=\(snapshot.defaultOutputUID ?? "nil") defaultSystemOutput=\(snapshot.defaultSystemOutputUID ?? "nil")")
         pendingSnapshot = snapshot
@@ -278,6 +283,17 @@ final class AppState {
             Task { @MainActor in
                 self?.reconcileNow()
             }
+        }
+    }
+
+    private func expireOverrides() {
+        overrideExpiryTask?.cancel()
+        overrideExpiryTask = nil
+        guard let deadline = overrides.expire(connected: endpoints, now: Date()) else { return }
+        overrideExpiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, deadline.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            self?.expireOverrides()
         }
     }
 
